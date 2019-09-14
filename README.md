@@ -1,2 +1,2 @@
 # viewcontrol
-Slim program to play back different image media formats with smooth transitions and control of ethernet-connected devices and DMX.
+Lightweight program for playback of various image media formats with seamless transitions and control via Ethernet connected devices and DMX.
