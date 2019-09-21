@@ -6,6 +6,7 @@ class CommandObj (yaml.YAMLObject):
     yaml_tag = u'!CommandObj'
     start_seq=''
     end_seq='\r'
+    error_seq=''
 
     def __init__(self, name, description, 
                  string_requ=None,
@@ -29,38 +30,50 @@ class CommandObj (yaml.YAMLObject):
                 type(self.dict_mapping),
                 )
         
-    def send_command(self, subcommand=None):
-        if not subcommand:
-            return CommandObj.start_seq \
-                + self.parser_send \
-                + CommandObj.end_seq
-        elif isinstance(self.dict_mapping, dict):  # auwahl an befehlen
-            if subcommand in self.dict_mapping.keys():
-                pass
-            elif subcommand in self.dict_mapping.values():
-                for key, val in self.dict_mapping.items():
-                    if val == subcommand:
-                        subcommand = key
-            else:
-                raise ValueError("subcommand '{}' not in dictionary")
-        return CommandObj.start_seq \
-            + self.parser_send.format(subcommand) \
-            + CommandObj.end_seq
+    def send_command(self, *args):
+        if len(args)==0:
+            return self._combine_command(self.parser_send)
+            #return CommandObj.start_seq \
+            #    + self.parser_send \
+            #    + CommandObj.end_seq
+        else:
+            subcommand=list(args)
+        if isinstance(self.dict_mapping, dict):  # auwahl an befehlen
+            for i in range(len(subcommand)):
+                if subcommand[i] in self.dict_mapping.keys():
+                    pass
+                elif subcommand[i] in self.dict_mapping.values():
+                    for key, val in self.dict_mapping.items():
+                        if val == subcommand[i]:
+                            subcommand[i] = key
+                else:
+                    raise ValueError("subcommand '{}' not in dictionary")
+        return self._combine_command(self.parser_send.format(*subcommand))
+        #return CommandObj.start_seq \
+        #    + self.parser_send.format(subcommand) \
+        #    + CommandObj.end_seq
     
     def send_request(self):
-        return CommandObj.start_seq \
-            + self.string_requ \
-            + CommandObj.end_seq
+        return self._combine_command(self.string_requ)
+        #return CommandObj.start_seq \
+        #    + self.string_requ \
+        #    + CommandObj.end_seq
+
+    def _combine_command(self, str_command):
+        tmp_start_seq = ''
+        if not CommandObj.start_seq in str_command:
+            tmp_start_seq = CommandObj.start_seq
+        return tmp_start_seq + str_command + CommandObj.end_seq
     
-    def recv_parser(self, recv_str):
+    def recv_parser(self, recv_str, map=True):
         if recv_str == 'nack':
             return None
         m = re.search(self.parser_recv, recv_str)
-        if isinstance(self.dict_mapping, dict):
-            return(self.dict_mapping.get(m.group(1)))
-        else:
-            return m.group(1)
-        return m.group(1)
+        retval = list(m.groups())
+        if map and isinstance(self.dict_mapping, dict):
+            for i in range(len(retval)):
+                retval[i] = self.dict_mapping.get(retval[i])
+        return retval
         
 
     @staticmethod
@@ -107,10 +120,11 @@ class dict_commandobj(dict):
 
 class dnc (CommandObj):
     yaml_tag = u'!CommandDenon'
-    start_seq=''
+    start_seq='@0'
     end_seq='\r'
 
-# class atlona (CommandObj):
-#     yaml_tag = u'!CommandAtlona'
-#     start_seq=''
-#     end_seq='\r'
+class atlona (CommandObj):
+    yaml_tag = u'!CommandAtlona'
+    start_seq=''
+    end_seq='\r'
+    error_seq=r'Command FAILED: \((.*)\)'
