@@ -1,16 +1,16 @@
 """Test script for CommandObj atlona and provided command (cmdatlona.yaml)
 
-    Notes
-    -----
-    Only for Testing. 
+Notes
+-----
+Only for Testing. 
 
-    Use provided dictionary to test the communication with the device. Thread
-    will print all relevant information
+Use provided dictionary to test the communication with the device. Thread
+will print all relevant information
 
-    The Atlona device seems to send status messages in
-    between of answers. E.g: in the the recived message is 
-    'fuuHello Worldbar' where 'fuubar' should be recived and 'Hello World' is
-    a status message (cariage return and new line ommited)
+The Atlona device seems to send status messages in
+between of answers. E.g: in the the recived message is 
+'fuuHello Worldbar' where 'fuubar' should be recived and 'Hello World' is
+a status message (cariage return and new line ommited)
     
 """
 

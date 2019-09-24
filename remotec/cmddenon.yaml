@@ -213,3 +213,11 @@
   parser_send: null
   parser_recv: '@0RM([0-9]{3})([0-9]{2})([0-9]{2})'
   dict_mapping: null
+
+- !CommandDenon
+  name: Time hhh mm ss
+  description: Time of @0?ET or @0?RT
+  string_requ: null
+  parser_send: null
+  parser_recv: '([0-9]{3})([0-9]{2})([0-9]{2})'
+  dict_mapping: null
