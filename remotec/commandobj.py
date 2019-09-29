@@ -125,15 +125,15 @@ class CommandObj (yaml.YAMLObject):
 
     @staticmethod
     def convert2dict(list_commandobj):
-    """converts list to dict with name as key and obj as value"""
+        """converts list to dict with name as key and obj as value"""
         dict_commandobj = dict()
         for commandobj in list_commandobj:
             dict_commandobj.update({commandobj.name: commandobj})
         return dict_commandobj
 
     @staticmethod
-    """loads a object dict from yaml file"""
     def load_from_yaml(file_path):
+        """loads a object dict from yaml file"""
         with open(file_path, 'r') as infile:
             list_commandobj = yaml.load(infile, Loader=yaml.Loader)
         return CommandObj.convert2dict(list_commandobj)
@@ -141,7 +141,6 @@ class CommandObj (yaml.YAMLObject):
 
 class dict_commandobj(dict):
     """dict, which provides custom search functions
-    
     """
 
     def __init__(self, file_path=None, *args, **kwargs):
