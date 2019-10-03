@@ -69,15 +69,18 @@ class ViewControl(object):
         lp = threading.Thread(target=self.logger_thread, args=(q,))
         lp.start()
 
-        config_path = "config.yaml"
-        if os.path.exists(config_path):
-            with open(config_path, 'rt') as f:
+        default_config_path = "config.yaml"
+        if os.path.exists(default_config_path):
+            with open(default_config_path, 'rt') as f:
                 config = yaml.safe_load(f.read())
                 self.restart_at_error = config.get("restart_at_error")
+                self.media_file_path = config.get('media_file_path')
         else:
             raise FileNotFoundError(
                 "Config File {} not found, can't start programm!" \
-                .format(os.path.abspath(config_path)))
+                .format(os.path.abspath(default_config_path)))
+
+        
 
         #self.pipe_pc, self.pipe_cc = multiprocessing.Pipe()
         self.pipe_mpv_time_A, self.pipe_mpv_time_B = multiprocessing.Pipe()
@@ -172,7 +175,7 @@ class ViewControl(object):
             player['image-display-duration'] = 5  # Pipe in while loop to update duration
             player['keep-open'] = True
             player['osc'] = False
-            player.loop_playlist = 'inf'
+            #player.loop_playlist = 'inf'
 
             #handler_mpv_observer_time = functools.partial(self.mpv_observer_time, log=logger, pipe=pipe_mpv_time)
             #player.observe_property('time-remaining', handler_mpv_observer_time)
@@ -276,10 +279,20 @@ class ViewControl(object):
         for process in self.processeses:
             if not process.is_alive():
                 exc_msg = "Uncaught exception in subprocess: '{}'".format(process.name)
+                
+                if self.restart_at_error:
+                    process.terminate()
+                    process.start()
+                    str.join(exc_msg, "Restarting Processes")
+                else:
+                    str.join(exc_msg, "Terminate all Processes")
+                    for p in multiprocessing.active_children():
+                        p.terminate()
+                    raise Exception(exc_msg)
+                
                 self.logger.error(exc_msg)
-                for p in multiprocessing.active_children():
-                    p.terminate()
-                raise Exception(exc_msg)
+                
+                
             #time.sleep(.1)
 
         
