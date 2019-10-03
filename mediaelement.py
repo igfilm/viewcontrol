@@ -14,6 +14,9 @@ from sqlalchemy import Column, Integer, String, Boolean, Time, ForeignKey
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import desc
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import joinedload, selectinload
 
 Base = declarative_base()
 
@@ -78,10 +81,8 @@ class LoopEnd(LogicElement):
 
 class LogicElementLister:
 
-    def __init__(self, db_engine):
-        self.db_engine = db_engine
-        Session = sessionmaker(bind=db_engine)
-        self.session = Session()
+    def __init__(self, session):
+        self.session = session
         self.elements = []
         self._load_elements()        
 
@@ -130,11 +131,13 @@ class LogicElementLister:
 
 class MediaElement(Base):
     __tablename__ = 'mediaElement'
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, )
     name = Column(String(50))
     file_path_w = Column(String(50))
     file_path_c = Column(String(50))
     type = Column(String(20))
+
+    #parents = relationship("SequenceModule", back_populates="child")
 
     __mapper_args__ = {
         'polymorphic_on':type,
@@ -208,12 +211,10 @@ class StillElement(MediaElement):
 
 class MediaElementLister:
 
-    def __init__(self, db_engine):
-        self.db_engine = db_engine
-        Session = sessionmaker(bind=db_engine)
-        self.session = Session()
+    def __init__(self, session):
+        self.session = session
         self.elements = []
-        self._load_elements()
+        #self._load_elements()
 
     def add_element(self, obj, num=1):
         name=obj.name
@@ -249,8 +250,12 @@ class SequenceModule(Base):
     sequence_name = Column(String(20), nullable=True)
     position = Column(Integer)
     time = Column(Time)
-    logic_element = Column(Integer, ForeignKey('logicElement.id'))
-    media_element = Column(Integer, ForeignKey('mediaElement.id'))
+    #https://docs.sqlalchemy.org/en/13/orm/join_conditions.html
+    logic_element_id = Column(Integer, ForeignKey('logicElement.id'))
+    logic_element = relationship("LogicElement", foreign_keys=[logic_element_id])
+    media_element_id = Column(Integer, ForeignKey('mediaElement.id'))
+    media_element = relationship("MediaElement", foreign_keys=[media_element_id])
+    #child = relationship("MediaElement", back_populates="parents")
     #list_commands = Column(Integer, ForeignKey('command.id'))#relationship("Command", order_by="Command.delay", uselist=True)
 
     def __init__(self, sequence_name, position, element=None, list_commands=Command.nocommand()):
@@ -262,13 +267,14 @@ class SequenceModule(Base):
         else:
             self.list_commands = dc([list_commands])
 
+
     def _set_element(self, element):
         if not element:
             return
         elif issubclass(type(element), MediaElement):
-            self.media_element = element.id
+            self.media_element = element
         elif issubclass(type(element), LogicElement):
-            self.logic_element = element.id
+            self.logic_element = element
 
     def add_element(self, obj):
         self._set_element(obj)
@@ -282,29 +288,36 @@ class SequenceModule(Base):
 
 class Show():  #class SequenceLister()
 
-    def __init__(self, db_engine, name, *args, **kwargs):
+    # def __init__(self, name, db_engine=None, *args, **kwargs):
+    #     if not db_engine:
+    #         project_folder = vctools.read_yaml().get('project_folder')
+    #         db_file = os.path.join(project_folder, 'vcproject.db3')
+    #         engine = 'sqlite:///'+db_file
+    #         db_engine = create_engine(engine)
+    #     self.current_pos = 0
+    #     self.sequence_name = name
+    #     self.db_engine = db_engine
+    #     Session = sessionmaker(bind=db_engine)
+    #     self.session = Session()
+    #     self.sequence = []
+    #     #self._load_objects_from_db()
+    
+    def __init__(self, session, name, *args, **kwargs):
+        self.current_pos = 0
         self.sequence_name = name
-        self.db_engine = db_engine
-        Session = sessionmaker(bind=db_engine)
-        self.session = Session()
+        self.session = session
         self.sequence = []
         self._load_objects_from_db()
 
-    def save_show(self):
-        #delete all old entries of this sequence
-        self.session.add_all(self.sequence)
-        self.session.commit()
-
     def load_show(self):
-        Session = sessionmaker(bind=self.db_engine)
-        session = Session()
-        self.sequence = session.query(SequenceModule).all()
+        self.sequence = self.session.query(SequenceModule).\
+            filter(SequenceModule.sequence_name==self.sequence_name, ).all()
+            #join(SequenceModule, MediaElement, SequenceModule.media_element).\
+            #filter(SequenceModule.sequence_name==self.sequence_name, ).all()
+            #options(contains_eager(SequenceModule.media_element)).\
 
     def del_show(self):
         pass
-
-    def add_empty_module(self, pos=None):
-        self.add_module(None, pos)
 
     def add_module(self, element, pos=None):
         if not pos:
@@ -314,24 +327,58 @@ class Show():  #class SequenceLister()
         self.session.add(sm)
         self.session.commit()
 
+    def append_module(self, element):
+        self.add_module(element)
+    
+    def add_empty_module(self, pos=None):
+        self.add_module(None, pos)
+
+    def append_empty_module(self):
+        self.add_module(None)
+
+    def change_position(self, element, new_pos, first=True):
+        cur_pos = element.position
+        if cur_pos < new_pos:
+            next_pos = cur_pos+1
+        elif cur_pos > new_pos:
+            next_pos = cur_pos-1
+        else:
+            self.session.commit()
+            return
+
+        self._get_object_at_pos(next_pos).position = cur_pos
+        element.position = next_pos
+        
+        self.change_position(element, new_pos)
+
+
     def _load_objects_from_db(self):
-        #TODO only load those with right seqeunec_name
-        self.sequence = self.session.query(SequenceModule).all()
+        self.sequence = self.session.query(SequenceModule).filter(SequenceModule.sequence_name==self.sequence_name).all()
+
+    def _get_object_at_pos(self, position):
+        for s in self.sequence:
+            if s.position == position:
+                return s
+
+    def first(self):
+        self.current_pos = 0
+        return self._get_object_at_pos(self.current_pos)
+
+    def next(self):
+        """returns next element, handles logic elements"""
+        self.current_pos = self.current_pos+1
+        obj =  self._get_object_at_pos(self.current_pos)
+        if obj.logic_element:
+            self.next()
+        else:
+            return obj
 
 def create_project_databse(db_engine):
     Base.metadata.create_all(db_engine, Base.metadata.tables.values(),checkfirst=True)
-    Session = sessionmaker(bind=db_engine)
-    session = Session()
-    #if not session.query(MediaElement).filter(MediaElement.type=='MediaElement').first():
-    #    session.add(MediaElement('None', None, None))
-    #if not session.query(LogicElement).filter(LogicElement.type=='LogicElement').first():
-    #    session.add(LogicElement())
-    session.commit()
 
 if __name__ == '__main__':
 
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
+    
 
     create = True
 
@@ -346,13 +393,17 @@ if __name__ == '__main__':
 
     engine = 'sqlite:///'+db_file
     some_engine = create_engine(engine)
-    create_project_databse(some_engine) 
+    create_project_databse(some_engine)
+    Session = sessionmaker(bind=some_engine)
+    session = Session()
 
-    elist = MediaElementLister(some_engine)
+    MediaElement('Webung Neumitglieder', "A", "B")
+
+    elist = MediaElementLister(session)
     if create:        
         elist.add_element(StillElement('Webung Neumitglieder', '../testfiles/Werbung-neuemitglieder.pdf'))
         elist.add_element(StillElement('Flyer Winterprogram', '../testfiles/FLyerWintersem.pdf'))
-        #elist.add_object_to_db(StillElement('Marvel Madness', '../testfiles/MarvelMadness.pdf'))
+        elist.add_element(StillElement('Marvel Madness', '../testfiles/MarvelMadness.pdf'))
         elist.add_element(StillElement('im moon', '../testfiles/pic1_im_moon.jpg'))
         elist.add_element(StillElement('im pda', '../testfiles/pic2_im_pda.jpg'))
         elist.add_element(StillElement('im shark', '../testfiles/pic3_im_shark.jpg'))
@@ -362,18 +413,21 @@ if __name__ == '__main__':
     logic_loop_Start = LoopStart()
     logic_loop_Stop = LoopEnd()
 
-    llist = LogicElementLister(some_engine)
+    llist = LogicElementLister(session)
     llist.add_element_loop()
 
-    slist = Show(some_engine, 'testing')
-    slist.add_empty_module()
-    slist.add_module(elist.get_element_with_name('im moon'))
-    slist.add_module(llist.get_element_with_name('LoopStart_1'))
+    show = Show(session, 'testing')
+    show.add_empty_module()
+    show.add_module(StillElement('Webung Neumitglieder', '../testfiles/Werbung-neuemitglieder.pdf'))
+    show.add_module(llist.get_element_with_name('LoopStart_1'))
     for e in elist.elements:
-        slist.add_module(e)
-    slist.add_module(llist.get_element_with_name('LoopEnd_1'))
+        show.add_module(e)
+    show.add_module(llist.get_element_with_name('LoopEnd_1'))
+
+    #show.change_position(show.sequence[9], 5)
 
 
+    playlist = Show(session, "testing")
 
-
+    print("fuubar")
     
