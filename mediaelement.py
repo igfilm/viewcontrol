@@ -10,7 +10,7 @@ from copy import deepcopy as dc
 import vctools
 
 from sqlalchemy import orm
-from sqlalchemy import Column, Integer, String, Boolean, Time, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, Time, ForeignKey, Float
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import desc
@@ -79,7 +79,7 @@ class LoopEnd(LogicElement):
         pass
         #find position of end and tellm it youre new position
 
-class LogicElementLister:
+class LogicElementManager:
 
     def __init__(self, session):
         self.session = session
@@ -137,20 +137,16 @@ class MediaElement(Base):
     file_path_c = Column(String(50))
     type = Column(String(20))
 
-    #parents = relationship("SequenceModule", back_populates="child")
-
     __mapper_args__ = {
         'polymorphic_on':type,
         'polymorphic_identity':'MediaElement'
     }
     
-    #@orm.reconstructor 
     def __init__(self, name, file_path_w, file_path_c):
         self.name = name
         self.file_path_w = file_path_w
         self.file_path_c = file_path_c
 
-    #@orm.reconstructor 
     def initialize(self, name, file_path_w, file_path_c):
         self.name = name
         self.file_path_w = file_path_w
@@ -179,7 +175,6 @@ class StillElement(MediaElement):
         'polymorphic_identity':'StillElement'
     }
 
-    #@orm.reconstructor
     def __init__(self, name, file_path):
         tmp_dst = os.path.join(
             MediaElement.read_media_path_from_config(), 
@@ -187,8 +182,8 @@ class StillElement(MediaElement):
             os.path.splitext(os.path.basename(file_path))[0])
         tmp_dst_w = tmp_dst+ '_w.jpg'
         tmp_dst_c = tmp_dst+ '_c.jpg'
-        #StillElement.insert_image(file_path, tmp_dst_w , False)
-        #StillElement.insert_image(file_path, tmp_dst+ '_c.jpg', True)
+        StillElement.insert_image(file_path, tmp_dst_w , False)
+        StillElement.insert_image(file_path, tmp_dst+ '_c.jpg', True)
         super().__init__(name, tmp_dst_w, tmp_dst_c)
     
     def __repr__(self):
@@ -196,7 +191,6 @@ class StillElement(MediaElement):
 
     @staticmethod
     def insert_image(path_scr, path_dst, cinescope=False):
-        #print("cinescope: {}".format(cinescope))
         if cinescope:
             screesize =  (1920, 810)
         else:
@@ -209,12 +203,12 @@ class StillElement(MediaElement):
                 dst.composite(operator='over', left=offset_width, top=offset_height, image=scr)
                 dst.save(filename=path_dst)
 
-class MediaElementLister:
+class MediaElementManager:
 
     def __init__(self, session):
         self.session = session
         self.elements = []
-        #self._load_elements()
+        self._load_elements()
 
     def add_element(self, obj, num=1):
         name=obj.name
@@ -249,7 +243,8 @@ class SequenceModule(Base):
     id = Column(Integer, primary_key=True)
     sequence_name = Column(String(20), nullable=True)
     position = Column(Integer)
-    time = Column(Time)
+    #time = Column(Time)
+    time = Column(Float)
     #https://docs.sqlalchemy.org/en/13/orm/join_conditions.html
     logic_element_id = Column(Integer, ForeignKey('logicElement.id'))
     logic_element = relationship("LogicElement", foreign_keys=[logic_element_id])
@@ -258,9 +253,18 @@ class SequenceModule(Base):
     #child = relationship("MediaElement", back_populates="parents")
     #list_commands = Column(Integer, ForeignKey('command.id'))#relationship("Command", order_by="Command.delay", uselist=True)
 
-    def __init__(self, sequence_name, position, element=None, list_commands=Command.nocommand()):
+    def __init__(self, sequence_name, position, element=None, time=None, list_commands=Command.nocommand()):
         self.sequence_name = sequence_name
         self.position = position
+        if isinstance(element, VideoElement):
+            #get length of video
+            time = 10
+            pass
+        elif isinstance(element, StillElement) and not time:
+            time = 5
+        else:
+            time = 3.14
+        self.time=time
         self._set_element(element)
         if isinstance(list_commands, list):
             self.list_commands = dc(list_commands)
@@ -286,27 +290,22 @@ class SequenceModule(Base):
         #del old and add new
         pass
 
-class Show():  #class SequenceLister()
-
-    # def __init__(self, name, db_engine=None, *args, **kwargs):
-    #     if not db_engine:
-    #         project_folder = vctools.read_yaml().get('project_folder')
-    #         db_file = os.path.join(project_folder, 'vcproject.db3')
-    #         engine = 'sqlite:///'+db_file
-    #         db_engine = create_engine(engine)
-    #     self.current_pos = 0
-    #     self.sequence_name = name
-    #     self.db_engine = db_engine
-    #     Session = sessionmaker(bind=db_engine)
-    #     self.session = Session()
-    #     self.sequence = []
-    #     #self._load_objects_from_db()
+class Show():
     
-    def __init__(self, session, name, *args, **kwargs):
+    def __init__(self, name, session=None, *args, **kwargs):
         self.current_pos = 0
         self.sequence_name = name
-        self.session = session
         self.sequence = []
+        if not session:
+            project_folder = vctools.read_yaml().get('project_folder')
+            db_file = os.path.join(project_folder, 'vcproject.db3')
+            engine = 'sqlite:///'+db_file
+            some_engine = create_engine(engine)
+            create_project_databse(some_engine)
+            Session = sessionmaker(bind=some_engine)
+            self.session = Session()
+        else:
+            self.session = session
         self._load_objects_from_db()
 
     def load_show(self):
@@ -319,10 +318,10 @@ class Show():  #class SequenceLister()
     def del_show(self):
         pass
 
-    def add_module(self, element, pos=None):
+    def add_module(self, element, pos=None, time=None):
         if not pos:
             pos = len(self.sequence)
-        sm = SequenceModule(self.sequence_name, pos, element=element)
+        sm = SequenceModule(self.sequence_name, pos, element=element, time=time)
         self.sequence.append(sm)
         self.session.add(sm)
         self.session.commit()
@@ -366,10 +365,16 @@ class Show():  #class SequenceLister()
 
     def next(self):
         """returns next element, handles logic elements"""
-        self.current_pos = self.current_pos+1
+        if self.current_pos < len(self.sequence)-1:
+            self.current_pos = self.current_pos+1
+        else:
+            #TODO handle playlist end
+            self.current_pos = 1
         obj =  self._get_object_at_pos(self.current_pos)
+        if not obj:
+            raise Exception("playlist at end")
         if obj.logic_element:
-            self.next()
+            return self.next()
         else:
             return obj
 
@@ -385,7 +390,7 @@ if __name__ == '__main__':
     project_folder = vctools.read_yaml().get('project_folder')
     db_file = os.path.join(project_folder, 'vcproject.db3')
 
-    if create and False:
+    if create and True:
         try:
             os.remove(db_file)
         except:
@@ -399,7 +404,7 @@ if __name__ == '__main__':
 
     MediaElement('Webung Neumitglieder', "A", "B")
 
-    elist = MediaElementLister(session)
+    elist = MediaElementManager(session)
     if create:        
         elist.add_element(StillElement('Webung Neumitglieder', '../testfiles/Werbung-neuemitglieder.pdf'))
         elist.add_element(StillElement('Flyer Winterprogram', '../testfiles/FLyerWintersem.pdf'))
@@ -413,10 +418,10 @@ if __name__ == '__main__':
     logic_loop_Start = LoopStart()
     logic_loop_Stop = LoopEnd()
 
-    llist = LogicElementLister(session)
+    llist = LogicElementManager(session)
     llist.add_element_loop()
 
-    show = Show(session, 'testing')
+    show = Show('testing', session)
     show.add_empty_module()
     show.add_module(StillElement('Webung Neumitglieder', '../testfiles/Werbung-neuemitglieder.pdf'))
     show.add_module(llist.get_element_with_name('LoopStart_1'))
@@ -427,7 +432,7 @@ if __name__ == '__main__':
     #show.change_position(show.sequence[9], 5)
 
 
-    playlist = Show(session, "testing")
+    playlist = Show("testing", session)
 
     print("fuubar")
     

@@ -3,5 +3,5 @@ media_file_path:
 project_folder:
 
 
-
+start_remotec: False
 restart_at_error: False
