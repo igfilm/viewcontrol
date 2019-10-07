@@ -1,0 +1,223 @@
+#4-1-1. Key Control
+
+- !CommandDenon
+  name: PowerOn
+  description: Power On
+  string_requ: null
+  parser_recv: null
+  parser_send: '@0PW00'
+  dict_mapping: null
+
+- !CommandDenon
+  name: PowerOff
+  description: Power Off
+  string_requ: null
+  parser_recv: null
+  parser_send: '@0PW01'
+  dict_mapping: null
+
+- !CommandDenon
+  name: Stop
+  description: Stop
+  string_requ: null
+  parser_send: '@02354'
+  parser_recv: null
+  dict_mapping: null
+
+- !CommandDenon
+  name: Play
+  description: Play
+  string_requ: null
+  parser_send: '@02353'
+  parser_recv: null
+  dict_mapping: null
+
+- !CommandDenon
+  name: Pause
+  description: Play Pause
+  string_requ: null
+  parser_send: '@02348'
+  parser_recv: null
+  dict_mapping: null
+
+- !CommandDenon
+  name: Track Jump
+  description: Track/Chapter Jump
+  string_requ: null
+  parser_send: '@0Tr{0:04d}'  
+  parser_recv:  null
+  dict_mapping: null
+
+- !CommandDenon
+  name: Track Jump Next
+  description: Track/Chapter Jump Next
+  string_requ: null
+  parser_send: '@02332'
+  parser_recv: null
+  dict_mapping: null
+
+- !CommandDenon
+  name: Track Jump Next
+  description: Track/Chapter Jump Next
+  string_requ: null
+  parser_send: '@02333'
+  parser_recv: null
+  dict_mapping: null
+
+- !CommandDenon
+  name: Group Number
+  description: Group/Title Jump | Group Number
+  string_requ: '@0?PCGp'
+  parser_send: '@0PCGp{0:04d}'  
+  parser_recv: '@0PCGp([0-9]{4})'
+  dict_mapping: null
+
+- !CommandDenon
+  name: Group Jump Next
+  description: Group/Title Jump Next
+  string_requ: null
+  parser_send: '@0PCGPNX'
+  parser_recv: null
+  dict_mapping: null
+
+- !CommandDenon
+  name: Group Jump Next
+  description: TGrouprack/Title Jump Next
+  string_requ: null
+  parser_send: '@0PCGPPV'
+  parser_recv: null
+  dict_mapping: null
+
+- !CommandDenon
+  name: IR Lock
+  description: IR Remote Lock
+  string_requ: '@0?PCIRLK'
+  parser_send: '@0PCIRLK{}'
+  parser_recv: '@0PCIRLK([0,1]{2})'
+  dict_mapping:
+    00: IR Lock On
+    01: IR Lock Off
+
+- !CommandDenon
+  name: TMC
+  description: Time Mode Code
+  string_requ: '@0?PCTMD'
+  parser_send: '@0PCTMD{}'
+  parser_recv: '@0PCTMD([A-Z]{2})'  
+  dict_mapping:
+    EL: Ellapsed
+    RM: Remain
+    TL: Total Ellapsed
+    TR: Total Remain
+
+- !CommandDenon
+  name: Hide OSD
+  description: Complete hiding of the icon displayed on the screen.
+  string_requ: '@0?DVHOSD'
+  parser_send: '@0DVHOSD{}'
+  parser_recv: '@0DVHOSD([0,1]{2})'
+  dict_mapping:
+    00: Hide OSD On
+    01: Hide OSD Off
+
+- !CommandDenon
+  name: Mute
+  description: Play
+  string_requ: '@0?mt'
+  parser_send: '@0mt{}'
+  parser_recv: '@0mt([0,1]{2})'
+  dict_mapping:
+    00: Mute On
+    01: Mute Off
+
+#4-1-3. Current Status Information
+
+- !CommandDenon
+  name: Media Status
+  description: Media Status
+  string_requ: '@0?CD'
+  parser_send: null
+  parser_recv: '@0CD([A-Z]{2})'  
+  dict_mapping:
+    NC: No Disk
+    CI: Disk In
+    UF: Unformat
+    TO: Tray Opening
+    TC: Tray Close
+    TE: Tray Error
+
+- !CommandDenon
+  name: Status
+  description: Status
+  string_requ: '@0?ST'
+  parser_send: null
+  parser_recv: '@0ST([A-Z]{2,4})'  
+  dict_mapping:
+    DVFF: Fast Play Forward
+    DVFR: Fast Play Revers
+    DVFS: FS Play
+    DVHM: Home
+    DVSF: Slow Play Forward
+    DVSP: Step play
+    DVSR: Slow Play Revers
+    DVSU: Setup
+    DVTR: Track Menu
+    ED: Menu
+    PL: Play
+    PP: Pause
+
+- !CommandDenon
+  name: Total Track Number
+  description: Total Track Number
+  string_requ: '@0?Tt'
+  parser_send: null
+  parser_recv: '@0Tt([0-9]{4}|UNKN)'
+  dict_mapping: null
+
+- !CommandDenon
+  name: Track Number
+  description: Track Number
+  string_requ: '@0?Tt'
+  parser_send: null
+  parser_recv: '@0Tr([0-9]{4}|UNKN)'
+  dict_mapping: null
+
+- !CommandDenon
+  name: Total Group Number
+  description: Group Number
+  string_requ: '@0?PCTG'
+  parser_send: null
+  parser_recv: '@0PCTG([0-9]{4}|UNKN)'
+  dict_mapping: null
+
+- !CommandDenon
+  name: Group Number
+  description: Group Number
+  string_requ: '@0?PCGp'
+  parser_send: null
+  parser_recv: '@0PCGp([0-9]{4}|UNKN)'
+  dict_mapping: null
+
+- !CommandDenon
+  name: Elapse Time
+  description: Elapse Time
+  string_requ: '@0?ET'
+  parser_send: null
+  parser_recv: '@0ET([0-9]{3})([0-9]{2})([0-9]{2})'
+  dict_mapping: null
+
+- !CommandDenon
+  name: Remain Time
+  description: Remain Time
+  string_requ: '@0?RM'
+  parser_send: null
+  parser_recv: '@0RM([0-9]{3})([0-9]{2})([0-9]{2})'
+  dict_mapping: null
+
+- !CommandDenon
+  name: Time hhh mm ss
+  description: Time of @0?ET or @0?RT
+  string_requ: null
+  parser_send: null
+  parser_recv: '([0-9]{3})([0-9]{2})([0-9]{2})'
+  dict_mapping: null
