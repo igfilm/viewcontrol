@@ -1,11 +1,10 @@
-
-from wand.image import Image
-from wand.color import Color
 import yaml
 import os
 import time
 import datetime
 from copy import deepcopy as dc
+from numpy import array, arange
+from shutil import copyfile
 
 import vctools
 
@@ -18,7 +17,19 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm import joinedload, selectinload
 
+from moviepy.video.io.VideoFileClip import VideoFileClip
+from moviepy.video.VideoClip import ColorClip
+from moviepy.video.compositing.CompositeVideoClip import CompositeVideoClip
+from moviepy.video.fx.resize import resize
+
+from wand.image import Image
+from wand.color import Color
+
+
 Base = declarative_base()
+
+def create_project_databse(db_engine):
+    Base.metadata.create_all(db_engine, Base.metadata.tables.values(),checkfirst=True)
 
 class Command(Base):
     __tablename__ = 'command'
@@ -42,44 +53,74 @@ class Command(Base):
         return Command("no command", None)
 
 class LogicElement(Base):
+    """Base class for Logic Elements.
+    
+    Args:
+        name (str): name of the logic element
+        key  (int): unique key of logic element (important for loops)
+
+    Attributes:
+        name    (str): name of the logic element
+        key     (int): unique key of logic element (important for loops)
+        id      (int): primary key of object in database
+        etyp (string): polymorphic_identity of element in database
+
+    """
     __tablename__ = 'logicElement'
     id = Column(Integer, primary_key=True)
     name = Column(String(50))
-    position = Column(Integer)
+    #position = Column(Integer)
     key = Column(Integer)
-    type = Column(String(20))
+    etype = Column(String(20))
 
     __mapper_args__ = {
-        'polymorphic_on':type,
+        'polymorphic_on':etype,
         'polymorphic_identity':'LogicElement'
     }
 
+    def __init__(self, name, key):
+        self.name = name
+        self.key = key
+
 class LoopStart(LogicElement):
-    #key = Column(Integer)
-    #name = "LoopStart"
+    """Saves position for the start of a loop condition"""
 
     __mapper_args__ = {
         'polymorphic_identity':'LoopStart'
     }
 
-    def change_position(self):
-        pass
-        #find position of end and tellm it youre new position
+    def __init__(self, name, key):
+        super().__init__(name, key)
 
 class LoopEnd(LogicElement):
-    #key = Column(Integer)
-    #repeat = True
-    #cycles = 0  # 0=inf
+    """Saves position for the start of a loop condition"""
+
+    cycles = Column(Integer)
 
     __mapper_args__ = {
         'polymorphic_identity':'LoopEnd'
     }
 
-    def change_position(self):
-        pass
-        #find position of end and tellm it youre new position
+    def __init__(self, name, key, cycles):
+        super().__init__(name, key)
+        self.cycles = cycles
+        self.init2()
+
+    @orm.reconstructor
+    def init2(self):
+        self.counter = 0
 
 class LogicElementManager:
+    """Manager for all lofic elemets at runtime and in database.
+
+    Args:
+        session (sqlalchemy.orm.Session): database session
+
+    Attributes:
+        session  (sqlalchemy.orm.Session): database session
+        elements     (Lits<MediaElemets>): list of active logic elemets
+
+    """
 
     def __init__(self, session):
         self.session = session
@@ -114,31 +155,58 @@ class LogicElementManager:
     def _load_elements(self):
         self.elements.extend(self.session.query(MediaElement).all())
 
-    def add_element_loop(self):
+    def add_element_loop(self, cycles):
         raw_key = self.session.query(LoopStart.key).order_by(desc(LoopStart.key)).first()
         if not raw_key:
             key = 1
         else:
             key = raw_key[0]
-        loop_start = LoopStart()
-        loop_start.key = key
-        loop_start.name = "LoopStart_{}".format(loop_start.key)
+        loop_start = LoopStart("LoopStart_{}".format(key), key)
         self.add_element(loop_start)
-        loop_end = LoopEnd()
-        loop_end.key = key
-        loop_end.name = "LoopEnd_{}".format(loop_end.key)
+        loop_end = LoopEnd("LoopEnd_{}".format(key), key, cycles)
         self.add_element(loop_end)
 
 class MediaElement(Base):
+    """Base class for Media Elements.
+
+    Since the media output format is always 1080p with an aspect ratio of 16:9, 
+    the film format of the film on the BlueRay is either 16:9 widescreen or 
+    21:9 cincescope (the term CinemaScope originally stands for a special 
+    process for recording and projecting wide-screen films with an aspect ratio
+    of 2.55:1 = 23:9 and is nevertheless used here for the designation of the 
+    21:9 image format). If the film format is cinescope, the zoom of the 
+    projector is adjusted in such a way that the film content fills the screen 
+    and the black bars remain outside of the screen. If images and videos are 
+    displayed here now, they have to stay in the cinescope image area. 
+    Therefore, there are file paths to both media formats, which can also be 
+    identical. 
+
+    The following nomenclatures for the image content format are used: 
+        cinescope   '21:9'  '_c'
+        widescreen  '16:9'  '_w'
+
+    Args:
+        name        (str): name of the media element
+        file_path_w (str): file path to widescreen version of the file
+        file_path_c (str): file path to cinescope version of the file
+
+    Attributes:
+        name        (str): name of the media element
+        file_path_w (str): file path to widescreen version of the file
+        file_path_c (str): file path to cinescope version of the file
+        id          (int): primary key of object in database
+        etype    (string): polymorphic_identity of element in database
+
+    """
     __tablename__ = 'mediaElement'
     id = Column(Integer, primary_key=True, )
     name = Column(String(50))
     file_path_w = Column(String(50))
     file_path_c = Column(String(50))
-    type = Column(String(20))
+    etype = Column(String(20))
 
     __mapper_args__ = {
-        'polymorphic_on':type,
+        'polymorphic_on':etype,
         'polymorphic_identity':'MediaElement'
     }
     
@@ -153,23 +221,94 @@ class MediaElement(Base):
         self.file_path_c = file_path_c
 
     def __repr__(self):
-        return "{}|{}".format(self.name, self.file_path)
+        return "{}|{}".format(type(self), self.name)
 
     @staticmethod
     def read_media_path_from_config():
-        return vctools.read_yaml().get('media_file_path')
+        return vctools.read_yaml().get('default_project_folder')
 
 class VideoElement(MediaElement):
+    """Class for moving MediaElement.
+    
+    Args:
+        name        (str): name of the media element
+        file_path (str): file path to source file, which will be copied and/or
+            converted into the media folder defined in the config file
+
+    Attributes:
+        duration (float): duration in seconds of video clip
+
+    """
+
+    duration = Column(Integer)
 
     __mapper_args__ = {
         'polymorphic_identity':'VideoElement'
     }
 
-    #@orm.reconstructor 
     def __init__(self, name, file_path):
-        super().__init__(name, file_path_w=file_path, file_path_c=None)
+        
+        tmp_dst = os.path.join(
+            MediaElement.read_media_path_from_config(), 
+            str(int(time.time())) + '_' +
+            os.path.splitext(os.path.basename(file_path))[0])
+        tmp_dst_c = tmp_dst+ '_c.mp4'
+        dur, car = self.insert_video(file_path, tmp_dst_c, cinescope=True)
+        print(dur, car)
+        self.duration = dur
+        content_aspect_ratio = car
+        if content_aspect_ratio == '21:9':
+            tmp_dst_w = tmp_dst_c
+        else:
+            tmp_dst_w = tmp_dst+ '_w.mp4'
+            self.insert_video(file_path, tmp_dst_w, content_aspect=content_aspect_ratio, cinescope=False)
+        super().__init__(name, tmp_dst_w, tmp_dst_c)
+
+
+    def insert_video(self, path_scr, path_dst, content_aspect=None, cinescope=True):
+        video_clip = VideoFileClip(path_scr)
+        if cinescope:            
+            content_aspect = VideoElement.get_video_content_aspect_ratio(video_clip)
+        if content_aspect == "16:9" and cinescope:
+            #else do nothing cinscope identical with widescreen
+            cclip = ColorClip(size=(1920, 1080), color=(0, 0, 0), duration=video_clip.duration)
+            video_clip = video_clip.fx(resize, height=810).set_position('center')
+            result = CompositeVideoClip([cclip, video_clip])
+            result.write_videofile(path_dst,fps=video_clip.fps)
+        else:
+            copyfile(path_scr, path_dst)
+        return video_clip.duration, content_aspect
+
+    @staticmethod
+    def get_video_content_aspect_ratio(video_file_clip):
+        vfc = video_file_clip
+        samples=5
+        sample_time_step = video_file_clip.duration/samples
+        w = []
+        for t in arange(0,video_file_clip.duration,sample_time_step):
+            frame=video_file_clip.get_frame(t)
+            
+            w.append(frame[[int(vfc.h*.125), int(vfc.h*.5), int(vfc.h*.875)], 0:vfc.w].mean(axis=2).mean(axis=1))
+        w=array(w)
+        wm = w.mean(axis=0)
+        
+        print(video_file_clip.filename, wm)
+
+        if wm[0] < 1 and wm[2] < 1 and wm[1]>=1:
+            return '21:9'
+        else:
+            return '16:9'
 
 class StillElement(MediaElement):
+    """Class for non-moving MediaElement.
+
+    Args:
+        name        (str): name of the media element
+        file_path (str): file path to source file, which will be copied and/or
+            converted into the media folder defined in the config file
+
+    
+    """
 
     __mapper_args__ = {
         'polymorphic_identity':'StillElement'
@@ -186,11 +325,12 @@ class StillElement(MediaElement):
         StillElement.insert_image(file_path, tmp_dst+ '_c.jpg', True)
         super().__init__(name, tmp_dst_w, tmp_dst_c)
     
-    def __repr__(self):
-        return "{}|{}|{}".format(self.name, self.file_path, self.display_time)
 
     @staticmethod
-    def insert_image(path_scr, path_dst, cinescope=False):
+    def insert_image(path_scr, path_dst, cinescope):
+        """Composes images with black background for widescreen and cinescope.
+
+        """
         if cinescope:
             screesize =  (1920, 810)
         else:
@@ -203,7 +343,23 @@ class StillElement(MediaElement):
                 dst.composite(operator='over', left=offset_width, top=offset_height, image=scr)
                 dst.save(filename=path_dst)
 
+class StartElement(MediaElement):
+    """Class for start MediaElement cointaining the program picture."""
+
+    def __init__(self):
+        super().__init__('viewcontrol', 'viewcontrol.png', 'viewcontrol.png')
+
 class MediaElementManager:
+    """Manager for all media elemets at runtime and in database.
+
+    Args:
+        session (sqlalchemy.orm.Session): database session
+
+    Attributes:
+        session  (sqlalchemy.orm.Session): database session
+        elements     (Lits<MediaElemets>): list of active media elemets
+
+    """
 
     def __init__(self, session):
         self.session = session
@@ -239,18 +395,43 @@ class MediaElementManager:
         self.elements = self.session.query(MediaElement).all()
 
 class SequenceModule(Base):
+    """Object of a Playlist
+
+    One of the two elements is always None (construction for database technical
+    reasons). A MediaElement can be used in any number of SequenceElements 
+    (many to one). With VideoElements the time corresponds to the video length 
+    with StillElements the time corresponds to the display duration and is set 
+    by the user. 
+
+    Args:
+        sequence_name
+        position
+        element=None
+        time=None
+        list_commands
+
+    Attributes:
+        id          (int): primary key of object in database
+        sequence_name
+        position
+        time
+        logic_element_id
+        logic_element
+        media_element_id
+        media_element
+
+    """
+    
     __tablename__ = 'sequenceElements'
     id = Column(Integer, primary_key=True)
     sequence_name = Column(String(20), nullable=True)
     position = Column(Integer)
-    #time = Column(Time)
     time = Column(Float)
     #https://docs.sqlalchemy.org/en/13/orm/join_conditions.html
     logic_element_id = Column(Integer, ForeignKey('logicElement.id'))
     logic_element = relationship("LogicElement", foreign_keys=[logic_element_id])
     media_element_id = Column(Integer, ForeignKey('mediaElement.id'))
     media_element = relationship("MediaElement", foreign_keys=[media_element_id])
-    #child = relationship("MediaElement", back_populates="parents")
     #list_commands = Column(Integer, ForeignKey('command.id'))#relationship("Command", order_by="Command.delay", uselist=True)
 
     def __init__(self, sequence_name, position, element=None, time=None, list_commands=Command.nocommand()):
@@ -258,7 +439,7 @@ class SequenceModule(Base):
         self.position = position
         if isinstance(element, VideoElement):
             #get length of video
-            time = 10
+            time = element.duration
             pass
         elif isinstance(element, StillElement) and not time:
             time = 5
@@ -271,6 +452,12 @@ class SequenceModule(Base):
         else:
             self.list_commands = dc([list_commands])
 
+    def __repr__(self):
+        if self.media_element:
+            element_name = self.media_element.name
+        else:
+            element_name = self.logic_element.name
+        return "{}|{}|{}|".format(self.sequence_name, self.position, element_name)
 
     def _set_element(self, element):
         if not element:
@@ -290,14 +477,37 @@ class SequenceModule(Base):
         #del old and add new
         pass
 
+    @staticmethod
+    def viewcontroll_placeholder():
+        return SequenceModule(None, 0, element=StartElement(), time=1)
+
 class Show():
+    """SequenceObjectManager/PlaylistManager
+
+    Manages Sequence Object. Media or LogicElements must be in the Database.
+
+    Args:
+        name    (str): name of the show
+        session (sqlalchemy.orm.Session, optional): database session, defaults
+            to None. If None, s default session will be created from config 
+            file.
+
+    Attributes:
+        current_pos                (int): 
+        sequence_name              (str): name of the show (sequece_name of all
+            SequenceElements in sequence)
+        sequence (List<SequenceElement>): Playlist list of all SequenceElements  
+        session (sqlalchemy.orm.Session): database session
+
+    """
     
-    def __init__(self, name, session=None, *args, **kwargs):
+    def __init__(self, name, session=None, project_folder=None):
         self.current_pos = 0
         self.sequence_name = name
         self.sequence = []
         if not session:
-            project_folder = vctools.read_yaml().get('project_folder')
+            if not project_folder:
+                project_folder = vctools.read_yaml().get('default_project_folder')
             db_file = os.path.join(project_folder, 'vcproject.db3')
             engine = 'sqlite:///'+db_file
             some_engine = create_engine(engine)
@@ -311,9 +521,6 @@ class Show():
     def load_show(self):
         self.sequence = self.session.query(SequenceModule).\
             filter(SequenceModule.sequence_name==self.sequence_name, ).all()
-            #join(SequenceModule, MediaElement, SequenceModule.media_element).\
-            #filter(SequenceModule.sequence_name==self.sequence_name, ).all()
-            #options(contains_eager(SequenceModule.media_element)).\
 
     def del_show(self):
         pass
@@ -360,11 +567,11 @@ class Show():
                 return s
 
     def first(self):
-        self.current_pos = 0
+        self.current_pos = 1
         return self._get_object_at_pos(self.current_pos)
 
     def next(self):
-        """returns next element, handles logic elements"""
+        """returns next element and handles logic elements"""
         if self.current_pos < len(self.sequence)-1:
             self.current_pos = self.current_pos+1
         else:
@@ -374,65 +581,77 @@ class Show():
         if not obj:
             raise Exception("playlist at end")
         if obj.logic_element:
+            print("logic element", obj.logic_element)
+            if isinstance(obj.logic_element, LoopEnd):
+                if obj.logic_element.counter < obj.logic_element.cycles:
+                    for s in self.sequence:
+                        if s.logic_element and s.logic_element.key == obj.logic_element.key:
+                            self.current_pos = s.position                  
+                    obj.logic_element.counter = obj.logic_element.counter + 1
+            
             return self.next()
         else:
             return obj
 
-def create_project_databse(db_engine):
-    Base.metadata.create_all(db_engine, Base.metadata.tables.values(),checkfirst=True)
 
 if __name__ == '__main__':
+    """For Testing or Quick and Dirty Show"""       
 
-    
+    if True:
+        TMP = vctools.read_yaml()
+        project_folder = TMP.get('default_project_folder')
+        db_file = os.path.join(project_folder, 'vcproject.db3')
 
-    create = True
+        if True:
+            try:
+                os.remove(db_file)
+            except:
+                pass
 
-    project_folder = vctools.read_yaml().get('project_folder')
-    db_file = os.path.join(project_folder, 'vcproject.db3')
+        engine = 'sqlite:///'+db_file
+        some_engine = create_engine(engine)
+        create_project_databse(some_engine)
+        Session = sessionmaker(bind=some_engine)
+        session = Session()
 
-    if create and True:
-        try:
-            os.remove(db_file)
-        except:
-            pass
+        MediaElement('Webung Neumitglieder', "A", "B")
 
-    engine = 'sqlite:///'+db_file
-    some_engine = create_engine(engine)
-    create_project_databse(some_engine)
-    Session = sessionmaker(bind=some_engine)
-    session = Session()
-
-    MediaElement('Webung Neumitglieder', "A", "B")
-
-    elist = MediaElementManager(session)
-    if create:        
-        elist.add_element(StillElement('Webung Neumitglieder', '../testfiles/Werbung-neuemitglieder.pdf'))
-        elist.add_element(StillElement('Flyer Winterprogram', '../testfiles/FLyerWintersem.pdf'))
-        elist.add_element(StillElement('Marvel Madness', '../testfiles/MarvelMadness.pdf'))
+        elist = MediaElementManager(session)      
+        #elist.add_element(StillElement('Webung Neumitglieder', '../testfiles/Werbung-neuemitglieder.pdf'))
+        #elist.add_element(StillElement('Flyer Winterprogram', '../testfiles/FLyerWintersem.pdf'))
+        #elist.add_element(VideoElement("Big Buck Bunny", "/home/johannes/Downloads/bbb_sunflower_1080p_60fps_normal.mp4"))
+        #elist.add_element(VideoElement("Its Dark","/home/johannes/Downloads/It is dark...-84507748.mp4"))
         elist.add_element(StillElement('im moon', '../testfiles/pic1_im_moon.jpg'))
+        #elist.add_element(VideoElement("BangBang", "/home/johannes/Downloads/BANG BANG TRAILER-95457968.mp4"))
+        # elist.add_element(StillElement('Marvel Madness', '../testfiles/MarvelMadness.pdf'))
         elist.add_element(StillElement('im pda', '../testfiles/pic2_im_pda.jpg'))
         elist.add_element(StillElement('im shark', '../testfiles/pic3_im_shark.jpg'))
-        elist.add_element(StillElement('psu', '../testfiles/pic4_IMG_3311.JPG'))
-    elist.add_element(StillElement('name', '../testfiles/pic2_im_pda.jpg'))
-
-    logic_loop_Start = LoopStart()
-    logic_loop_Stop = LoopEnd()
-
-    llist = LogicElementManager(session)
-    llist.add_element_loop()
-
-    show = Show('testing', session)
-    show.add_empty_module()
-    show.add_module(StillElement('Webung Neumitglieder', '../testfiles/Werbung-neuemitglieder.pdf'))
-    show.add_module(llist.get_element_with_name('LoopStart_1'))
-    for e in elist.elements:
-        show.add_module(e)
-    show.add_module(llist.get_element_with_name('LoopEnd_1'))
-
-    #show.change_position(show.sequence[9], 5)
+        
+        #elist.add_element(VideoElement("Dark Room", "/home/johannes/Downloads/Dark Room-99432663.mp4"))
+        # elist.add_element(VideoElement("Space","/home/johannes/Downloads/Dark Hearts of Space - AV Performance-183838791.mp4"))
+        
+        # elist.add_element(VideoElement("Forever","/home/johannes/IGF/testfiles/vid1_forever.mkv"))
+        #elist.add_element(StillElement('name', '../testfiles/pic2_im_pda.jpg'))
 
 
-    playlist = Show("testing", session)
+        llist = LogicElementManager(session)
+        llist.add_element_loop(3)
 
-    print("fuubar")
+        show = Show('testing', session)
+        #show.add_empty_module()
+        show.add_module(StillElement('Webung Neumitglieder', '../testfiles/Werbung-neuemitglieder.pdf'))
+        show.add_module(llist.get_element_with_name('LoopStart_1'))
+        for e in elist.elements:
+            show.add_module(e)
+        show.add_module(llist.get_element_with_name('LoopEnd_1'))
+
+        #show.change_position(show.sequence[9], 5)
+
+     
+
+    playlist = Show("testing")
+    playlist.load_show()
+
+    while True:
+        print(playlist.next())
     

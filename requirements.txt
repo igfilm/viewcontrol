@@ -1,2 +1,5 @@
 PyYAML==5.1.2
 python-mpv==0.3.9
+moviepy==1.0.1
+Wand==0.5.7
+Wand==0.5.7

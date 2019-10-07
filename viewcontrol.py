@@ -20,7 +20,7 @@ import mediaelement
 import mpv
 
 import mediaelement
-from mediaelement import MediaElement, VideoElement, StillElement, Command
+from mediaelement import MediaElement, VideoElement, StillElement, Command, Show
 from remotec.commandprocess import CommandProcess
 
 class ViewControl(object):
@@ -103,10 +103,10 @@ class ViewControl(object):
         self.processeses.append(self.process_mpv)
 
         self.logger.info("Initialized __main__ with pid {}".format(os.getpid()))
-
-        self.playlist = mediaelement.Show('testing')
-        self.playlist.load_show()
-        self.element_current = None
+        #in run definiert
+        #self.playlist = mediaelement.Show('testing')
+        #self.playlist.load_show()
+        self.element_current = mediaelement.SequenceModule.viewcontroll_placeholder()
         self.element_next = None
 
         #Only For Pre-Alpha Version
@@ -175,6 +175,8 @@ class ViewControl(object):
                     else:
                         player.playlist_next()
                         logger.info("Call playlist_next")
+                else:
+                    time.sleep(.005)
                 
         except Exception as e:
             try:
@@ -198,21 +200,36 @@ class ViewControl(object):
         self.playlist = mediaelement.Show('testing')
         self.playlist.load_show()
 
+        self.element_next = self.playlist.first()
+
+        #self.mpv_controll_queue.put(self.element_current)
+        #TODO Improve program start
         while True:
                      
             if self.pipe_mpv_stat_A.poll():
                 data = self.pipe_mpv_stat_A.recv()
                 if data[0] == 'filename':
                     self.logger.error("recived filename {}".format(data))
+                    #print(type(self.element_current.media_element),self.element_current.media_element)
+                    #if isinstance(self.element_current.media_element, mediaelement.StartElement):
+                        
+                    self.element_current = self.element_next
                     self.element_next = self.playlist.next()
-                    if True:
+                    
+                    if False:
                         file_path_next = self.element_next.media_element.file_path_w
                     else:
                         file_path_next = self.element_next.media_element.file_path_c
-                    time = self.element_next.time
-                    threading.Timer(time-1, self.timer_append_next, args=(file_path_next,)).start()
-                    if isinstance(self.element_next.media_element, StillElement):
-                        threading.Timer(time, self.timer_action_next).start()
+                    duration = self.element_current.time
+                    #print(self.element_current, duration)
+                    threading.Timer(duration-1, self.timer_append_next, args=(file_path_next,)).start()
+                    if isinstance(self.element_current.media_element, StillElement) and duration>0:
+                        if duration<1:
+                            self.timer_action_next()
+                        else:
+                            threading.Timer(duration, self.timer_action_next).start()
+            else:
+                time.sleep(.005)
 
             for process in self.processeses:
                 if not process.is_alive():
