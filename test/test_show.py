@@ -68,6 +68,15 @@ class TestShow(unittest.TestCase):
         TestShow.show.add_module(TestShow.mm.get_element_with_name("bbb"))
         TestShow.show.add_module(TestShow.llist.get_element_with_name("LoopEnd_1"))
 
+    def test_0302_show_add_element_with_command_list(self):
+        command = show.Command("test1", "CommandDenon", "Pause")
+        TestShow.show.add_module(TestShow.mm.get_element_with_name("poster"), commands=command)
+
+    def test_0303_show_add_command_to_element(self):
+        command = show.Command("test2", "CommandDenon", "Play")
+        TestShow.show.sequence[0].add_command(command)
+        TestShow.show.save_show()
+
     def test_0301_show_change_position(self):
         #TestShow.show.change_position(TestShow.show.sequence[3], 1)
         #need funtion to get element of position

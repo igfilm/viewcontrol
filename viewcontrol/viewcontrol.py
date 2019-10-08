@@ -19,19 +19,12 @@ import viewcontrol.vctools as vctools
 import mpv
 
 import viewcontrol.show as show
-#from .remotec.commandprocess import CommandProcess
+from viewcontrol.remotec.commandprocess import CommandProcess
 
 class ViewControl(object):
 
     def __init__(self, args, default_config_yaml_path='config.yaml'):
       
-        print(os.path.realpath(os.path.abspath(__file__)))
-
-        # Set the path to the path where the script resides
-        abspath = os.path.abspath(__file__)
-        dname = os.path.dirname(abspath)
-        os.chdir(dname)
-
         #Loading Logger with Configutation File
         logger_config_path = 'logging.yaml'
         if os.path.exists(logger_config_path):
@@ -90,13 +83,20 @@ class ViewControl(object):
         self.pipe_mpv_stat_A, self.pipe_mpv_stat_B = multiprocessing.Pipe()
         self.mpv_controll_queue = multiprocessing.Queue()
 
-        #pipeA, pipeB = multiprocessing.Pipe()
+        self.command_queue = multiprocessing.Queue()
 
-        # self.process_cmd = multiprocessing.Process(
-        #     target=CommandProcess.command_process, 
-        #     name="process_cmd", 
-        #     args=(pipeB, self.logger))
-        # self.process_cmd.daemon = True
+        #create processes
+        self.processeses = []
+
+        #modules = ['CommandDenon', 'CommandAtlona']
+        modules = ['CommandDenon']
+        #modules = []
+        self.process_cmd = multiprocessing.Process(
+            target=CommandProcess.command_process, 
+            name="process_cmd", 
+            args=(self.command_queue, self.logger, modules))
+        self.process_cmd.daemon = True
+        self.processeses.append(self.process_cmd)
 
         self.process_mpv = multiprocessing.Process(
             target=self.def_process_mpv, 
@@ -105,21 +105,9 @@ class ViewControl(object):
                 self.pipe_mpv_stat_B, 
                 self.mpv_controll_queue,))
         self.process_mpv.daemon = True
-
-        self.processeses = []
-        # if config.get('use_communication'):
-        #     self.processeses.append(self.process_cmd)
-        # else:
-        #     #process or funtion to empty pipes?
-        #     pass
         self.processeses.append(self.process_mpv)
 
         self.logger.info("Initialized __main__ with pid {}".format(os.getpid()))
-        #in run definiert
-        #self.playlist = mediaelement.Show('testing')
-        #self.playlist.load_show()
-        self.element_current = show.SequenceModule.viewcontroll_placeholder()
-        self.element_next = None
 
         #Only For Pre-Alpha Version
         # t = threading.Thread(
@@ -127,6 +115,7 @@ class ViewControl(object):
         #     name='pre-alpha', 
         #     args=(pipeA,))
         # t.start()
+
 
     #Only For Pre-Alpha Version
     @staticmethod
@@ -173,7 +162,7 @@ class ViewControl(object):
             player.observe_property('filename', handler_mpv_observer_stat)
 
             #first immage to avoid idle player
-            player.playlist_append('viewcontrol.png')
+            player.playlist_append('media/viewcontrol.png')
 
             while True:
 
@@ -183,10 +172,10 @@ class ViewControl(object):
                     data = queue_mpv.get()
                     if isinstance(data, str):                
                         player.playlist_append(data)
-                        logger.info("Appending File {} at pos {} in playlist.".format(str(data), len(player.playlist)))
+                        logger.debug("Appending File {} at pos {} in playlist.".format(str(data), len(player.playlist)))
                     else:
                         player.playlist_next()
-                        logger.info("Call playlist_next")
+                        logger.debug("Call playlist_next")
                 else:
                     time.sleep(.005)
                 
@@ -201,24 +190,31 @@ class ViewControl(object):
         self.mpv_controll_queue.put(None)
 
     def timer_append_next(self, path):
-        self.logger.info("Timer Next Append")
+        self.logger.debug("Timer Next Append")
         self.mpv_controll_queue.put(path)
 
+    def  timer_send_command(self, command_obj):
+
+        self.logger.debug("sending command '{}'".format(command_obj))
+        self.command_queue.put(command_obj)
+
     def main(self):
-        self.logger.info("StartedingProcessses")
+        self.logger.debug("StartedingProcessses")
         for process in self.processeses:
             process.start()
+
+        self.logger.info("Started all processes in process List")
+        time.sleep(.5)
 
         self.playlist = show.Show('testing', project_folder=self.project_folder)
         self.playlist.load_show()
 
-        self.element_next = self.playlist.first()
+        self.element_current = show.SequenceModule.viewcontroll_placeholder()
+        self.element_next = None
 
         first = True
         nexting = False
 
-        #self.mpv_controll_queue.put(self.element_current)
-        #TODO Improve program start
         while True:
             if self.pipe_mpv_stat_A.poll():
                 if first:
@@ -235,10 +231,8 @@ class ViewControl(object):
                             nexting = True                     
                 else:
                     data = self.pipe_mpv_stat_A.recv()
-                    if data[1] == 'viewcontrol.png':
-                        pass                            
-                    elif data[0] == 'filename':
-                        self.logger.info("recived filename {}".format(data))
+                    if data[0] == 'filename':
+                        self.logger.debug("recived filename {}".format(data))
                         self.element_current = self.element_next
                         self.element_next = self.playlist.next()
                         nexting = True
@@ -252,15 +246,22 @@ class ViewControl(object):
                 else:
                     file_path_next = self.element_next.media_element.file_path_c
                 duration = self.element_current.time
-                if duration <= 1:
-                    self.timer_append_next(file_path_next)
-                else:
-                    threading.Timer(duration-1, self.timer_append_next, args=(file_path_next,)).start()
+                
+                if len(self.element_current.list_commands):
+                    for command in self.element_current.list_commands:
+                        if command.delay == 0:
+                            self.timer_send_command(command)
+                        else:
+                            threading.Timer(command.delay, self.timer_send_command(command))
                 if isinstance(self.element_current.media_element, show.StillElement):
                     if duration==0:
                         self.timer_action_next()
                     else:
                         threading.Timer(duration, self.timer_action_next).start()
+                if duration <= 1:
+                    self.timer_append_next(file_path_next)
+                else:
+                    threading.Timer(duration-1, self.timer_append_next, args=(file_path_next,)).start()
                     
             for process in self.processeses:
                 if not process.is_alive():
@@ -277,7 +278,6 @@ class ViewControl(object):
                         raise Exception(exc_msg)
                     
                     self.logger.error(exc_msg)
-
 
     def handle_exception(self, exc_type, exc_value, exc_traceback):
         """
@@ -309,10 +309,5 @@ class ViewControl(object):
                 break
             logger = logging.getLogger(record.name)
             logger.handle(record)
-
-
-#if __name__ == "__main__":
-#    test = viewcontrol.ViewControl()
-#    test.run()
   
 

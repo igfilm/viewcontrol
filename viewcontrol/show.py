@@ -6,8 +6,6 @@ from copy import deepcopy as dc
 from numpy import array, arange
 from shutil import copyfile
 
-import viewcontrol.vctools as vctools
-
 from sqlalchemy import orm
 from sqlalchemy import Column, Integer, String, Boolean, Time, ForeignKey, Float
 from sqlalchemy.orm import relationship
@@ -24,6 +22,8 @@ from moviepy.video.fx.resize import resize
 
 from wand.image import Image
 from wand.color import Color
+
+import viewcontrol.vctools as vctools
 
 
 Base = declarative_base()
@@ -47,23 +47,59 @@ def create_session(project_folder=None):
 class Command(Base):
     __tablename__ = 'command'
     id = Column(Integer, primary_key=True)
-    #parent_id = Column(Integer, ForeignKey('sequenceElements.id'))
+    parent_id = Column(Integer, ForeignKey('sequenceElements.id'))
+    parent = relationship("SequenceModule", back_populates="list_commands")
     name = Column(String(50))
-    cmd_object = Column(String(50))
+    device = Column(String(50))
+    name_cmd = Column(String(50))
+    cmd_parameter1 = Column(String(10))
+    cmd_parameter2 = Column(String(10))
+    cmd_parameter3 = Column(String(10))
     delay = Column(Integer)
+    session = None
+    #can be extendet with expected values to check for errors
     
-    #@orm.reconstructor
-    def __init__(self, name, cmd_object, delay=0):
+    @classmethod
+    def set_session(cls, session):
+        cls.session = session
+
+    def __init__(self, name, device, name_cmd, *args, delay=0):
         self.name = name
-        self.cmd_object = cmd_object
+        self.name_cmd = name_cmd
+        self.device = device
         self.delay = delay
+        self.set_parameters(*args)
+        self._update_db()
+
+    def get_args(self):
+        if not self.cmd_parameter1:
+            return ()
+        elif self.cmd_parameter3:
+            return (self.cmd_parameter1, self.cmd_parameter2, self.cmd_parameter3)
+        elif self.cmd_parameter2:
+            return (self.cmd_parameter1, self.cmd_parameter2, self.cmd_parameter3)
+        else:  # self.cmd_parameter1
+            return (self.cmd_parameter1, self.cmd_parameter2, self.cmd_parameter3)
+
+    def set_parameters(self, *args):
+        if len(args) > 0:
+            self.cmd_parameter1 = args[0]
+        if len(args) > 1:
+            self.cmd_parameter2 = args[1]
+        if len(args) > 2:
+            self.cmd_parameter3 = args[2]
+
+    def _update_db(self):
+        #return
+        if not Command.session:
+            return
+        if not self.id:
+            Command.session.add(self)
+        Command.session.commit()
 
     def __repr__(self):
-        return "{}|{}".format(self.name, self.cmd_object)
+        return "{}|{}|{}|{}".format(self.name, self.device, self.name_cmd, self.get_args())
 
-    @staticmethod
-    def nocommand():
-        return Command("no command", None)
 
 class LogicElement(Base):
     """Base class for Logic Elements.
@@ -367,7 +403,7 @@ class StartElement(MediaElement):
     """Class for start MediaElement cointaining the program picture."""
 
     def __init__(self):
-        super().__init__('viewcontrol', 'viewcontrol.png', 'viewcontrol.png')
+        super().__init__('viewcontrol', 'media/viewcontrol.png', 'media/viewcontrol.png')
 
 class MediaElementManager:
     """Manager for all media elemets at runtime and in database.
@@ -452,9 +488,12 @@ class SequenceModule(Base):
     logic_element = relationship("LogicElement", foreign_keys=[logic_element_id])
     media_element_id = Column(Integer, ForeignKey('mediaElement.id'))
     media_element = relationship("MediaElement", foreign_keys=[media_element_id])
-    #list_commands = Column(Integer, ForeignKey('command.id'))#relationship("Command", order_by="Command.delay", uselist=True)
+    #list_commands_id = Column(Integer, ForeignKey('command.id'))
+    #list_commands = relationship("Command", foreign_keys=[list_commands_id])
+    list_commands = relationship("Command", back_populates="parent")
 
-    def __init__(self, sequence_name, position, element=None, time=None, list_commands=Command.nocommand()):
+
+    def __init__(self, sequence_name, position, element=None, time=None, list_commands=[]):
         self.sequence_name = sequence_name
         self.position = position
         if isinstance(element, VideoElement):
@@ -468,9 +507,9 @@ class SequenceModule(Base):
         self.time=time
         self._set_element(element)
         if isinstance(list_commands, list):
-            self.list_commands = dc(list_commands)
+            self.list_commands = list_commands
         else:
-            self.list_commands = dc([list_commands])
+            self.list_commands = [list_commands]
 
     def __repr__(self):
         if self.media_element:
@@ -489,6 +528,9 @@ class SequenceModule(Base):
 
     def add_element(self, obj):
         self._set_element(obj)
+
+    def add_command(self, command_obj):
+        self.list_commands.append(command_obj)
     
     def del_element(self, obj):
         pass
@@ -544,10 +586,14 @@ class Show():
     def del_show(self):
         pass
 
-    def add_module(self, element, pos=None, time=None):
+    def save_show(self):
+        self.session.commit()
+
+    def add_module(self, element, pos=None, time=None, commands=[]):
         if not pos:
             pos = len(self.sequence)
-        sm = SequenceModule(self.sequence_name, pos, element=element, time=time)
+        sm = SequenceModule(self.sequence_name, pos, 
+            element=element, time=time, list_commands=commands)
         self.sequence.append(sm)
         self.session.add(sm)
         self.session.commit()
@@ -612,4 +658,3 @@ class Show():
             return self.next()
         else:
             return obj
-    

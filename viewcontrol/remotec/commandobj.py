@@ -192,12 +192,12 @@ class dict_commandobj(dict):
             return "command not found"
 
 
-class dnc (CommandObj):
+class CommandDenon (CommandObj):
     yaml_tag = u'!CommandDenon'
     start_seq='@0'
     end_seq='\r'
 
-class atlona (CommandObj):
+class CommandAtlona (CommandObj):
     yaml_tag = u'!CommandAtlona'
     start_seq=''
     end_seq='\r'
