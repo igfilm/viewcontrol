@@ -82,17 +82,34 @@ class CommandProcess:
                 obj = dict_denon.get(cmd_obj.name_cmd)
                 if not obj:
                     logger.warning("Command '{}' not found in dict_deneon!".format(cmd_obj.name_cmd))
-                else:    
-                    args = cmd_obj.get_args()
-                    if args:
-                        logger.error("Not Sending: {}".format(obj.send_command(args)))
-                        #q_send_denon.put(obj.send_command(args))
-                    else:
-                        logger.error("Not Sending: {}".format(obj.send_request()))
-                        #q_send_denon.put(obj.send_request())                
+                    continue
+            elif cmd_obj.device == "CommandAtlona" and thread_denon.is_alive:
+                obj = dict_atlona.get(cmd_obj.name_cmd)
+                if not obj:
+                    logger.warning("Command '{}' not found in dict_atlona!".format(cmd_obj.name_cmd))
+                    continue
+
+            args = cmd_obj.get_args()
+            if args:
+                str_send = obj.send_command(args)
+                #logger.error("Not Sending: {}".format())
+                #q_send_denon.put(obj.send_command(args))
+            else:
+                if obj.string_requ:
+                    str_send = obj.send_request()
+                else:
+                    str_send = obj.send_command()
+                #logger.error("Not Sending: {}".format(obj.send_request()))
+                #q_send_denon.put(obj.send_request())                
             
-            #q_send_atlona.put(dict_atlona.get('Set Output').send_command(2, 1))
-            #q_send_denon.put(dict_denon.get('Track Jump').send_command(1))
+            if True:
+                logger.error("Not Sending to {}: {}".format(cmd_obj.device, str_send))
+            elif cmd_obj.device == "CommandDenon":
+                q_send_denon.put(str_send)
+            elif cmd_obj.device == "CommandDenon":
+                q_send_atlona.put(str_send)      
+
+                        
 
     @staticmethod
     def listening_atlona(q_send, q_recv, q_stat, dict_c=None, loga=None):

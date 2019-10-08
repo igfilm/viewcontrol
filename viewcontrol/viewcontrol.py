@@ -68,17 +68,27 @@ class ViewControl(object):
 
         config = vctools.read_yaml()
         self.restart_at_error = config.get("restart_at_error")
-        if isinstance(args[1], str):
+
+        if len(args) > 2:
             try:
                 arg_path = os.path.abspath(args[1])
             except OSError:
                 arg_path = None
+        else:
+            arg_path = None   
+
         if arg_path:
             self.project_folder = arg_path
             self.logger.info("Project Folder From Argv: {}".format(self.project_folder))
         else:
             self.project_folder = config.get('media_file_path')
             self.logger.warning("Loaded filepath from config file: {}".format(self.project_folder))
+
+        if len(args) == 3 and args[2] == "widescreen":
+            self.content_aspect = "widescreen"
+        else:
+            self.content_aspect = "cinescope"
+        self.logger.info("Aspect Ratio of content is {}.".format(self.content_aspect))
         
         self.pipe_mpv_stat_A, self.pipe_mpv_stat_B = multiprocessing.Pipe()
         self.mpv_controll_queue = multiprocessing.Queue()
@@ -241,7 +251,7 @@ class ViewControl(object):
 
             if nexting:
                 nexting = False
-                if False:
+                if self.content_aspect == "widescreen":
                     file_path_next = self.element_next.media_element.file_path_w
                 else:
                     file_path_next = self.element_next.media_element.file_path_c
