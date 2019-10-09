@@ -75,11 +75,11 @@ class Command(Base):
         if not self.cmd_parameter1:
             return ()
         elif self.cmd_parameter3:
-            return (self.cmd_parameter1, self.cmd_parameter2, self.cmd_parameter3)
+            return (int(self.cmd_parameter1), int(self.cmd_parameter2), int(self.cmd_parameter3))
         elif self.cmd_parameter2:
-            return (self.cmd_parameter1, self.cmd_parameter2, self.cmd_parameter3)
+            return (int(self.cmd_parameter1), int(self.cmd_parameter2))
         else:  # self.cmd_parameter1
-            return (self.cmd_parameter1, self.cmd_parameter2, self.cmd_parameter3)
+            return (int(self.cmd_parameter1),)
 
     def set_parameters(self, *args):
         if len(args) > 0:
@@ -620,6 +620,11 @@ class Show():
         sm = SequenceModule(self.sequence_name, len(self.sequence), 
             element=element, time=time, list_commands=commands)
         self._append_to_pos(sm, pos)
+
+    def add_module_still(self, name, file_path, *kargs):
+        e = StillElement(name, file_path)
+        MediaElementManager(self.session).add_element(e)
+        self.add_module(e, *kargs)
 
     def _append_to_pos(self, element, pos=None):
         self.sequence.append(element)

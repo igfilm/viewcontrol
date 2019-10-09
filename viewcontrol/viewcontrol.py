@@ -90,6 +90,12 @@ class ViewControl(object):
             self.content_aspect = "cinescope"
         self.logger.info("Aspect Ratio of content is {}.".format(self.content_aspect))
         
+        if len(args) == 4:
+            self.screen_id = int(args[3])
+        else:
+            self.screen_id = 10
+        self.logger.info("Screen ID is {}.".format(self.screen_id))
+
         self.pipe_mpv_stat_A, self.pipe_mpv_stat_B = multiprocessing.Pipe()
         self.mpv_controll_queue = multiprocessing.Queue()
 
@@ -156,7 +162,8 @@ class ViewControl(object):
             #initilaize player
             player = mpv.MPV(log_handler=mpv_log, ytdl=False)
             player.fullscreen = True
-            player['image-display-duration'] = 5  # Pipe in while loop to update duration
+            player['fs-screen'] = self.screen_id
+            player['image-display-duration'] = 15
             player['keep-open'] = True
             player['osc'] = False
 
@@ -210,6 +217,8 @@ class ViewControl(object):
 
         self.playlist = show.Show('testing', project_folder=self.project_folder)
         self.playlist.load_show()
+
+        self.logger.info("loaded Show: {}".format(self.playlist.sequence_name))
 
         t = threading.Thread(
             target=ViewControl.wait_for_enter, 

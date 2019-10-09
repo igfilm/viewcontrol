@@ -66,6 +66,7 @@ class CommandObj (yaml.YAMLObject):
             *args: Variable length argument list.
 
         """
+        print(args)
         if len(args)==0:
             return self._combine_command(self.parser_send)
         else:
@@ -80,7 +81,9 @@ class CommandObj (yaml.YAMLObject):
                             subcommand[i] = key
                 else:
                     raise ValueError("subcommand '{}' not in dictionary")
-        return self._combine_command(self.parser_send.format(*subcommand))
+            args = tuple(subcommand)
+        print(args)
+        return self._combine_command(self.parser_send.format(*args))
     
     def send_request(self):
         """send the command stored in string_requ"""

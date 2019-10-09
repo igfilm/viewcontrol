@@ -99,7 +99,7 @@ class CommandProcess:
 
             args = cmd_obj.get_args()
             if args:
-                str_send = obj.send_command(args)
+                str_send = obj.send_command(*args)
             else:
                 if obj.string_requ:
                     str_send = obj.send_request()
@@ -110,7 +110,7 @@ class CommandProcess:
                 q_send_denon.put(str_send)
             elif cmd_obj.device == "CommandDenon":
                 q_send_atlona.put(str_send)      
-            logger.debug("Added command string '{}' to device '{}' queue."
+            logger.info("Added command string '{}' to device '{}' queue."
                 .format(str_send, cmd_obj.device))
 
                         
