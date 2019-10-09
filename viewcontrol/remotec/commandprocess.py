@@ -15,17 +15,23 @@ from viewcontrol.remotec.commandobj import CommandObj, dict_commandobj, CommandD
 class CommandProcess:
 
     @staticmethod
-    def command_process(command_queue, logger, modules=[]):
+    def command_process(logger_config, command_queue, modules=[]):
 
-        if not logger:
-            logger = logging.getLogger()
-            logger.setLevel(logging.DEBUG)
+        logging.config.dictConfig(logger_config)
+        logger = logging.getLogger("command_process")
 
-            handler = logging.StreamHandler(sys.stdout)
-            handler.setLevel(logging.DEBUG)
-            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-            handler.setFormatter(formatter)
-            logger.addHandler(handler)
+        # if not logger_config:
+        #     logger = logging.getLogger()
+        #     logger.setLevel(logging.DEBUG)
+
+        #     handler = logging.StreamHandler(sys.stdout)
+        #     handler.setLevel(logging.DEBUG)
+        #     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        #     handler.setFormatter(formatter)
+        #     logger.addHandler(handler)
+        # else:
+        #     logging.config.dictConfig(logger_config)
+        #     logger = logging.getLogger("command_process")
 
         logger.info("Started command_process with pid {}".format(os.getpid()))
 
@@ -81,33 +87,31 @@ class CommandProcess:
             if cmd_obj.device == "CommandDenon" and thread_denon.is_alive:
                 obj = dict_denon.get(cmd_obj.name_cmd)
                 if not obj:
-                    logger.warning("Command '{}' not found in dict_deneon!".format(cmd_obj.name_cmd))
+                    logger.warning("Command '{}' not found in dict_deneon!"
+                        .format(cmd_obj.name_cmd))
                     continue
             elif cmd_obj.device == "CommandAtlona" and thread_denon.is_alive:
                 obj = dict_atlona.get(cmd_obj.name_cmd)
                 if not obj:
-                    logger.warning("Command '{}' not found in dict_atlona!".format(cmd_obj.name_cmd))
+                    logger.warning("Command '{}' not found in dict_atlona!"
+                        .format(cmd_obj.name_cmd))
                     continue
 
             args = cmd_obj.get_args()
             if args:
                 str_send = obj.send_command(args)
-                #logger.error("Not Sending: {}".format())
-                #q_send_denon.put(obj.send_command(args))
             else:
                 if obj.string_requ:
                     str_send = obj.send_request()
                 else:
-                    str_send = obj.send_command()
-                #logger.error("Not Sending: {}".format(obj.send_request()))
-                #q_send_denon.put(obj.send_request())                
+                    str_send = obj.send_command()            
             
-            if True:
-                logger.error("Not Sending to {}: {}".format(cmd_obj.device, str_send))
-            elif cmd_obj.device == "CommandDenon":
+            if cmd_obj.device == "CommandDenon":
                 q_send_denon.put(str_send)
             elif cmd_obj.device == "CommandDenon":
                 q_send_atlona.put(str_send)      
+            logger.debug("Added command string '{}' to device '{}' queue."
+                .format(str_send, cmd_obj.device))
 
                         
 
@@ -209,8 +213,8 @@ class CommandProcess:
             try:
                 listen()
             except OSError as ex:  #, ConnectionError, ConnectionRefusedError:
-                loga.warning("Atlona Communication Failed ({}). New Try in 1 second.".format(ex.errno))
-                time.sleep(1)
+                loga.warning("Atlona Communication Failed ({}). New Try in 10 second.".format(ex.errno))
+                time.sleep(10)
 
     @staticmethod
     def listening_denon(q_send, q_recv, q_stat, dict_c=None, loga=None):
@@ -292,31 +296,3 @@ class CommandProcess:
             except OSError as ex:  #, ConnectionError, ConnectionRefusedError:
                 loga.warning("Denon Communication Failed ({}). New Try in 10 second.".format(ex.errno))
                 time.sleep(10)
-            
-
-        
-
-#import error will be rised
-if __name__ == "__main__":
-
-    def wait_for_enter(pipeA):
-        input("Press Enter to Start BluRay")
-        pipeA.send("start")
-
-    pipeA, pipeB = multiprocessing.Pipe()
-
-    process = multiprocessing.Process(
-        target=CommandProcess.command_process, 
-        name="commandprocess",
-        args=(pipeB, ))
-    process.daemon = True
-    process.start()
-    
-    #x = input("Press Enter to continue...")
-    
-    #pipeA.send("start")  
-
-    t = threading.Thread(target=wait_for_enter, args=(pipeA,))
-    t.start()
-
-    process.join()

@@ -159,6 +159,18 @@ class LoopEnd(LogicElement):
     def init2(self):
         self.counter = 0
 
+
+class JumpToTarget(LogicElement):
+    """Saves position for the start of a loop condition"""
+
+    __mapper_args__ = {
+        'polymorphic_identity':'JumpToTarget'
+    }
+
+    def __init__(self, name):
+        super().__init__(name, None)
+
+
 class LogicElementManager:
     """Manager for all lofic elemets at runtime and in database.
 
@@ -309,7 +321,6 @@ class VideoElement(MediaElement):
             os.path.splitext(os.path.basename(file_path))[0])
         tmp_dst_c = tmp_dst+ '_c.mp4'
         dur, car = self.insert_video(file_path, tmp_dst_c, cinescope=True)
-        print(dur, car)
         self.duration = dur
         content_aspect_ratio = car
         if content_aspect_ratio == '21:9':
@@ -346,8 +357,6 @@ class VideoElement(MediaElement):
             w.append(frame[[int(vfc.h*.125), int(vfc.h*.5), int(vfc.h*.875)], 0:vfc.w].mean(axis=2).mean(axis=1))
         w=array(w)
         wm = w.mean(axis=0)
-        
-        print(video_file_clip.filename, wm)
 
         if wm[0] < 1 and wm[2] < 1 and wm[1]>=1:
             return '21:9'
@@ -541,7 +550,7 @@ class SequenceModule(Base):
 
     @staticmethod
     def viewcontroll_placeholder():
-        return SequenceModule(None, 0, element=StartElement(), time=1)
+        return SequenceModule("None", 0, element=StartElement(), time=5)
 
 class Show():
     """SequenceObjectManager/PlaylistManager
@@ -575,6 +584,19 @@ class Show():
         else:
             self.session = session
         self._load_objects_from_db()
+        self._find_jumptotarget_elements()
+        self.happened_event = []
+
+    @orm.reconstructor
+    def _find_jumptotarget_elements(self):
+        self.jumptotarget_elements = []
+        for e in self.sequence:
+            if e.logic_element:
+                if isinstance(e.logic_element, JumpToTarget):
+                    self.jumptotarget_elements.append(e)
+
+    def notify(self, name_event):
+        self.happened_event.append(name_event)
 
     def count(self):
         return len(self.sequence)
@@ -589,14 +611,22 @@ class Show():
     def save_show(self):
         self.session.commit()
 
+    def add_jumptotarget(self, name, pos=None, commands=[]):
+        jttm = JumpToTarget(name)
+        self.add_module(jttm, pos)
+        self.jumptotarget_elements.append(jttm)
+
     def add_module(self, element, pos=None, time=None, commands=[]):
-        if not pos:
-            pos = len(self.sequence)
-        sm = SequenceModule(self.sequence_name, pos, 
+        sm = SequenceModule(self.sequence_name, len(self.sequence), 
             element=element, time=time, list_commands=commands)
-        self.sequence.append(sm)
-        self.session.add(sm)
+        self._append_to_pos(sm, pos)
+
+    def _append_to_pos(self, element, pos=None):
+        self.sequence.append(element)
+        self.session.add(element)
         self.session.commit()
+        if pos:
+            self.change_position(element, pos)
 
     def append_module(self, element):
         self.add_module(element)
@@ -637,13 +667,21 @@ class Show():
 
     def next(self):
         """returns next element and handles logic elements"""
+
+        for e in self.jumptotarget_elements:
+            if e.logic_element.name in self.happened_event:
+                self.happened_event.remove(e.logic_element.name)
+                self.current_pos = e.position
+
         if self.current_pos < len(self.sequence)-1:
             self.current_pos = self.current_pos+1
+            obj =  self._get_object_at_pos(self.current_pos)
         else:
+            obj = SequenceModule.viewcontroll_placeholder()
             #TODO handle playlist end
-            self.current_pos = 0
+            #self.current_pos = 0
             #print logger warning plalist restarts
-        obj =  self._get_object_at_pos(self.current_pos)
+        
         if not obj:
             raise Exception("playlist at end")
         if obj.logic_element:

@@ -29,12 +29,12 @@ class ViewControl(object):
         logger_config_path = 'logging.yaml'
         if os.path.exists(logger_config_path):
             with open(logger_config_path, 'rt') as f:
-                config = yaml.safe_load(f.read())
-            logging.config.dictConfig(config)
+                config_log = yaml.safe_load(f.read())
+            logging.config.dictConfig(config_log)
         else:
             logging.basicConfig(level=logging.INFO)
-
-        self.logger = logging.getLogger(__name__)
+        #self.logger = logging.getLogger(__name__)
+        self.logger = logging.getLogger("main")
 
         #Add logging with traceback for all unhandled exeptions in main thread
         #https://stackoverflow.com/questions/6234405/
@@ -98,13 +98,11 @@ class ViewControl(object):
         #create processes
         self.processeses = []
 
-        #modules = ['CommandDenon', 'CommandAtlona']
-        modules = ['CommandDenon']
-        #modules = []
+        modules = ['CommandDenon', 'CommandAtlona']
         self.process_cmd = multiprocessing.Process(
             target=CommandProcess.command_process, 
             name="process_cmd", 
-            args=(self.command_queue, self.logger, modules))
+            args=(self.config_queue_logger, self.command_queue, modules))
         self.process_cmd.daemon = True
         self.processeses.append(self.process_cmd)
 
@@ -119,19 +117,13 @@ class ViewControl(object):
 
         self.logger.info("Initialized __main__ with pid {}".format(os.getpid()))
 
-        #Only For Pre-Alpha Version
-        # t = threading.Thread(
-        #     target=ViewControl.wait_for_enter, 
-        #     name='pre-alpha', 
-        #     args=(pipeA,))
-        # t.start()
-
 
     #Only For Pre-Alpha Version
     @staticmethod
-    def wait_for_enter(pipeA):
-        input("Press Enter to Start BluRay")
-        pipeA.send("start")
+    def wait_for_enter(show):
+        while True:
+            input("Press Enter to Start BluRay")
+            show.notify("start trailer")
 
     def mpv_log(self, loglevel, component, message, log):
         if loglevel == "fatal":
@@ -164,13 +156,13 @@ class ViewControl(object):
             #initilaize player
             player = mpv.MPV(log_handler=mpv_log, ytdl=False)
             player.fullscreen = True
-            player['image-display-duration'] = 100  # Pipe in while loop to update duration
+            player['image-display-duration'] = 5  # Pipe in while loop to update duration
             player['keep-open'] = True
             player['osc'] = False
 
             handler_mpv_observer_stat = functools.partial(self.mpv_observer_stat, log=logger, pipe=pipe_mpv_statl)
             player.observe_property('filename', handler_mpv_observer_stat)
-
+            player.observe_property('playlist-pos', handler_mpv_observer_stat)
             #first immage to avoid idle player
             player.playlist_append('media/viewcontrol.png')
 
@@ -182,10 +174,10 @@ class ViewControl(object):
                     data = queue_mpv.get()
                     if isinstance(data, str):                
                         player.playlist_append(data)
-                        logger.debug("Appending File {} at pos {} in playlist.".format(str(data), len(player.playlist)))
+                        logger.error("Appending File {} at pos {} in playlist.".format(str(data), len(player.playlist)))
                     else:
                         player.playlist_next()
-                        logger.debug("Call playlist_next")
+                        logger.error("Call playlist_next")
                 else:
                     time.sleep(.005)
                 
@@ -209,7 +201,7 @@ class ViewControl(object):
         self.command_queue.put(command_obj)
 
     def main(self):
-        self.logger.debug("StartedingProcessses")
+
         for process in self.processeses:
             process.start()
 
@@ -219,6 +211,12 @@ class ViewControl(object):
         self.playlist = show.Show('testing', project_folder=self.project_folder)
         self.playlist.load_show()
 
+        t = threading.Thread(
+            target=ViewControl.wait_for_enter, 
+            name='pre-alpha', 
+            args=(self.playlist,))
+        t.start()
+
         self.element_current = show.SequenceModule.viewcontroll_placeholder()
         self.element_next = None
 
@@ -226,35 +224,44 @@ class ViewControl(object):
         nexting = False
 
         while True:
-            if self.pipe_mpv_stat_A.poll():
-                if first:
-                    if self.playlist.count() > 0:
-                        if isinstance(self.element_current.media_element, show.StartElement):
-                            first = False
-                            self.element_current = self.playlist.first()
-                            self.element_next = self.playlist.next()
-                            self.timer_append_next(self.element_current.media_element.file_path_w)
-                            self.timer_action_next()
-                            #catch messages to prevent offset
-                            self.pipe_mpv_stat_A.recv()  # catch 'viewcontroll.png'
-                            self.pipe_mpv_stat_A.recv()  # catch element_current
-                            nexting = True                     
-                else:
-                    data = self.pipe_mpv_stat_A.recv()
-                    if data[0] == 'filename':
-                        self.logger.debug("recived filename {}".format(data))
+
+            data = self.pipe_mpv_stat_A.recv()
+            self.logger.error("recived data: {}".format(data))
+            if first:
+                if self.playlist.count() > 0:
+                    if isinstance(self.element_current.media_element, show.StartElement):
+                        first = False
+                        self.element_current = self.playlist.first()
+                        self.element_next = self.playlist.next()
+                        self.timer_append_next(self.element_current.media_element.file_path_w)
+                        self.timer_action_next()
+                        #catch messages to prevent offset
+                        #self.pipe_mpv_stat_A.recv()  # catch 'viewcontroll.png'
+                        #self.logger.error("intercepted event {}".format(self.pipe_mpv_stat_A.recv()))  # catch element_current
+                        nexting = True                     
+            else:
+                #data = self.pipe_mpv_stat_A.recv()
+                #self.logger.error("recived data: {}".format(data))
+                #if data[0] == 'filename':                        
+                if data[0] == 'playlist-pos':
+                    if data[1] <= 1:
+                        self.logger.error("CONTINUE")
+                    else:                        
                         self.element_current = self.element_next
                         self.element_next = self.playlist.next()
                         nexting = True
-            else:
-                time.sleep(.005)
 
             if nexting:
                 nexting = False
+
+                self.logger.error("Nexting - current: {} next: {}"
+                    .format(self.element_current, self.element_next))
+                
                 if self.content_aspect == "widescreen":
                     file_path_next = self.element_next.media_element.file_path_w
                 else:
                     file_path_next = self.element_next.media_element.file_path_c
+
                 duration = self.element_current.time
                 
                 if len(self.element_current.list_commands):
@@ -263,12 +270,14 @@ class ViewControl(object):
                             self.timer_send_command(command)
                         else:
                             threading.Timer(command.delay, self.timer_send_command(command))
-                if isinstance(self.element_current.media_element, show.StillElement):
+
+                if False: #isinstance(self.element_current.media_element, show.StillElement) \
+                    #or isinstance(self.element_current.media_element, show.StartElement):
                     if duration==0:
                         self.timer_action_next()
                     else:
                         threading.Timer(duration, self.timer_action_next).start()
-                if duration <= 1:
+                if True: #duration <= 1:
                     self.timer_append_next(file_path_next)
                 else:
                     threading.Timer(duration-1, self.timer_append_next, args=(file_path_next,)).start()
