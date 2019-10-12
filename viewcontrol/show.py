@@ -595,6 +595,10 @@ class Show():
                 if isinstance(e.logic_element, JumpToTarget):
                     self.jumptotarget_elements.append(e)
 
+    @property
+    def current_element(self):
+        return self._get_object_at_pos(self.current_pos)
+
     def notify(self, name_event):
         self.happened_event.append(name_event)
 

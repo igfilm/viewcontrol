@@ -15,23 +15,14 @@ from viewcontrol.remotec.commandobj import CommandObj, dict_commandobj, CommandD
 class CommandProcess:
 
     @staticmethod
-    def command_process(logger_config, command_queue, modules=[]):
-
-        logging.config.dictConfig(logger_config)
-        logger = logging.getLogger("command_process")
-
-        # if not logger_config:
-        #     logger = logging.getLogger()
-        #     logger.setLevel(logging.DEBUG)
-
-        #     handler = logging.StreamHandler(sys.stdout)
-        #     handler.setLevel(logging.DEBUG)
-        #     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        #     handler.setFormatter(formatter)
-        #     logger.addHandler(handler)
-        # else:
-        #     logging.config.dictConfig(logger_config)
-        #     logger = logging.getLogger("command_process")
+    def command_process(logger_config, command_queue, status_queue, modules=[]):
+        if isinstance(logger_config, logging.Logger):
+            logger = logger_config
+            print("fuu")
+        else:
+            logging.config.dictConfig(logger_config)
+            logger = logging.getLogger()
+            print("bar")
 
         logger.info("Started command_process with pid {}".format(os.getpid()))
 
@@ -108,7 +99,7 @@ class CommandProcess:
             
             if cmd_obj.device == "CommandDenon":
                 q_send_denon.put(str_send)
-            elif cmd_obj.device == "CommandDenon":
+            elif cmd_obj.device == "CommandAtlona":
                 q_send_atlona.put(str_send)      
             logger.info("Added command string '{}' to device '{}' queue."
                 .format(str_send, cmd_obj.device))
