@@ -5,6 +5,7 @@ import datetime
 from copy import deepcopy as dc
 from numpy import array, arange
 from shutil import copyfile
+import queue
 
 from sqlalchemy import orm
 from sqlalchemy import Column, Integer, String, Boolean, Time, ForeignKey, Float
@@ -23,17 +24,13 @@ from moviepy.video.fx.resize import resize
 from wand.image import Image
 from wand.color import Color
 
-import viewcontrol.vctools as vctools
-
 
 Base = declarative_base()
 
 def create_project_databse(db_engine):
     Base.metadata.create_all(db_engine, Base.metadata.tables.values(),checkfirst=True)
 
-def create_session(project_folder=None):
-    if not project_folder:
-        project_folder = vctools.read_yaml().get('default_project_folder')
+def create_session(project_folder):
     if not os.path.exists(project_folder):
         if not os.path.exists(project_folder):
             os.makedirs(project_folder)
@@ -45,6 +42,9 @@ def create_session(project_folder=None):
     return Session()
 
 class Command(Base):
+    """Command Database Object
+
+    """
     __tablename__ = 'command'
     id = Column(Integer, primary_key=True)
     parent_id = Column(Integer, ForeignKey('sequenceElements.id'))
@@ -266,6 +266,7 @@ class MediaElement(Base):
     file_path_c = Column(String(50))
     etype = Column(String(20))
     project_path = None
+    content_aspect_ratio = 'widescreen'
 
     __mapper_args__ = {
         'polymorphic_on':etype,
@@ -274,7 +275,36 @@ class MediaElement(Base):
 
     @classmethod
     def set_project_path(cls, path):
-        cls.project_path = path
+        cls.project_path = os.path.expanduser(path)
+
+    @classmethod
+    def set_content_aspect_ratio(cls, ratio):
+        if ratio in ['w', 'widescreen', '16:9']:
+            cls.content_aspect_ratio = 'widescreen'
+        else:
+            cls.content_aspect_ratio = 'cinescope'      
+
+    @staticmethod
+    def create_abs_filepath(abs_source, mid, extension, num=1):
+        target_file_core = os.path.splitext(os.path.basename(abs_source))[0]
+        if num > 1:
+            midnum = "{}_{}".format(mid, num)
+        else:
+            midnum = mid
+        target_file = os.path.join(
+            MediaElement.project_path,
+            target_file_core + midnum + "." + extension
+        )
+        if os.path.exists(target_file):
+            target_file = StartElement.create_abs_filepath(abs_source, mid, extension, num=num+1)
+        return target_file, os.path.relpath(target_file, start=MediaElement.project_path)  
+
+    @property
+    def file_path(self):
+        if MediaElement.content_aspect_ratio == 'widescreen':
+            return os.path.join(MediaElement.project_path, self.file_path_w)
+        else:
+            return os.path.join(MediaElement.project_path, self.file_path_c)
     
     def __init__(self, name, file_path_w, file_path_c):
         self.name = name
@@ -289,9 +319,6 @@ class MediaElement(Base):
     def __repr__(self):
         return "{}|{}".format(type(self), self.name)
 
-    @staticmethod
-    def read_media_path_from_config():
-        return vctools.read_yaml().get('default_project_folder')
 
 class VideoElement(MediaElement):
     """Class for moving MediaElement.
@@ -314,21 +341,17 @@ class VideoElement(MediaElement):
 
     def __init__(self, name, file_path):
         
-        tmp_dst = os.path.join(
-            #MediaElement.read_media_path_from_config(), 
-            MediaElement.project_path,
-            str(int(time.time())) + '_' +
-            os.path.splitext(os.path.basename(file_path))[0])
-        tmp_dst_c = tmp_dst+ '_c.mp4'
-        dur, car = self.insert_video(file_path, tmp_dst_c, cinescope=True)
+        adst_c, rdst_c = MediaElement.create_abs_filepath(file_path, "_c", "mp4")
+        dur, car = self.insert_video(file_path, adst_c, cinescope=True)
         self.duration = dur
         content_aspect_ratio = car
         if content_aspect_ratio == '21:9':
-            tmp_dst_w = tmp_dst_c
+            adst_w = adst_c
+            rdst_w = rdst_c
         else:
-            tmp_dst_w = tmp_dst+ '_w.mp4'
-            self.insert_video(file_path, tmp_dst_w, content_aspect=content_aspect_ratio, cinescope=False)
-        super().__init__(name, tmp_dst_w, tmp_dst_c)
+            adst_w, rdst_w = MediaElement.create_abs_filepath(file_path, "_w", "mp4")
+            self.insert_video(file_path, adst_w, content_aspect=content_aspect_ratio, cinescope=False)
+        super().__init__(name, rdst_w, rdst_c)
 
 
     def insert_video(self, path_scr, path_dst, content_aspect=None, cinescope=True):
@@ -376,19 +399,14 @@ class StillElement(MediaElement):
 
     __mapper_args__ = {
         'polymorphic_identity':'StillElement'
-    }
-
+    }         
+        
     def __init__(self, name, file_path):
-        tmp_dst = os.path.join(
-            #MediaElement.read_media_path_from_config(), 
-            MediaElement.project_path,
-            str(int(time.time())) + '_' +
-            os.path.splitext(os.path.basename(file_path))[0])
-        tmp_dst_w = tmp_dst+ '_w.jpg'
-        tmp_dst_c = tmp_dst+ '_c.jpg'
-        StillElement.insert_image(file_path, tmp_dst_w , False)
-        StillElement.insert_image(file_path, tmp_dst+ '_c.jpg', True)
-        super().__init__(name, tmp_dst_w, tmp_dst_c)
+        adst_w, rdst_w = MediaElement.create_abs_filepath(file_path, "_w", "jpg")
+        adst_c, rdst_c = MediaElement.create_abs_filepath(file_path, "_c", "jpg")
+        StillElement.insert_image(file_path, adst_w , False)
+        StillElement.insert_image(file_path, adst_c, True)
+        super().__init__(name, rdst_w, rdst_c)
     
 
     @staticmethod
@@ -497,8 +515,6 @@ class SequenceModule(Base):
     logic_element = relationship("LogicElement", foreign_keys=[logic_element_id])
     media_element_id = Column(Integer, ForeignKey('mediaElement.id'))
     media_element = relationship("MediaElement", foreign_keys=[media_element_id])
-    #list_commands_id = Column(Integer, ForeignKey('command.id'))
-    #list_commands = relationship("Command", foreign_keys=[list_commands_id])
     list_commands = relationship("Command", back_populates="parent")
 
 
@@ -528,6 +544,7 @@ class SequenceModule(Base):
         return "{}|{}|{}|".format(self.sequence_name, self.position, element_name)
 
     def _set_element(self, element):
+        """set element depending of class"""
         if not element:
             return
         elif issubclass(type(element), MediaElement):
@@ -536,17 +553,27 @@ class SequenceModule(Base):
             self.logic_element = element
 
     def add_element(self, obj):
-        self._set_element(obj)
+        """add media or logic element to playlist pos"""
+        if not self.media_element and not self.sequence_name:
+            self._set_element(obj)
+        else:
+            raise Exception("SequenceModule already conatins an element.")
 
     def add_command(self, command_obj):
+        """add a command to the command list"""
         self.list_commands.append(command_obj)
+
+    def remove_command(self, command):
+        """remove a command from the command list"""
+        raise NotImplementedError
     
-    def del_element(self, obj):
-        pass
+    def del_element(self):
+        """delete the media or logic element"""
+        raise NotImplementedError
 
     def replace_element(self, obj):
-        #del old and add new
-        pass
+        """replace the current media element with a new one."""
+        raise NotImplementedError
 
     @staticmethod
     def viewcontroll_placeholder():
@@ -575,20 +602,27 @@ class Show():
 
     """
     
-    def __init__(self, name, session=None, project_folder=None):
+    def __init__(self, name, session=None, project_folder=None, content_aspect_ratio='w'):
         self.current_pos = 0
         self.sequence_name = name
-        self.sequence = []
+        self.sequence = list()
         if not session:
             self.session = create_session(project_folder)
         else:
             self.session = session
+            project_folder = os.path.dirname(session.bind.engine.engine.engine.url.database)
+        MediaElement.set_project_path(project_folder)
+        MediaElement.set_content_aspect_ratio(content_aspect_ratio)
+        self._load_show()
+        self.happened_event_queue = queue.Queue()
+
+    #@orm.reconstructor
+    def _load_show(self):
         self._load_objects_from_db()
         self._find_jumptotarget_elements()
-        self.happened_event = []
 
-    @orm.reconstructor
     def _find_jumptotarget_elements(self):
+        """find all jumptotarget_elements in playlist and set the property"""
         self.jumptotarget_elements = []
         for e in self.sequence:
             if e.logic_element:
@@ -597,40 +631,46 @@ class Show():
 
     @property
     def current_element(self):
+        """returns current element"""
         return self._get_object_at_pos(self.current_pos)
 
     def notify(self, name_event):
-        self.happened_event.append(name_event)
+        """handles events send to show"""
+        self.happened_event_queue.put(name_event)
 
+    @property
     def count(self):
+        """number of modules in playlist"""
         return len(self.sequence)
 
-    def load_show(self):
-        self.sequence = self.session.query(SequenceModule).\
-            filter(SequenceModule.sequence_name==self.sequence_name, ).all()
-
     def del_show(self):
-        pass
+        """delete show at database"""
+        raise NotImplementedError
 
     def save_show(self):
+        """save show to database"""
         self.session.commit()
 
     def add_jumptotarget(self, name, pos=None, commands=[]):
+        """apends a jump to target sequence module"""
         jttm = JumpToTarget(name)
         self.add_module(jttm, pos)
         self.jumptotarget_elements.append(jttm)
 
     def add_module(self, element, pos=None, time=None, commands=[]):
+        """adds a module to playlist at given pos or at end when pos=None"""
         sm = SequenceModule(self.sequence_name, len(self.sequence), 
             element=element, time=time, list_commands=commands)
         self._append_to_pos(sm, pos)
 
     def add_module_still(self, name, file_path, *kargs):
+        """add a module coonatining a StillElement"""
         e = StillElement(name, file_path)
         MediaElementManager(self.session).add_element(e)
         self.add_module(e, *kargs)
 
     def _append_to_pos(self, element, pos=None):
+        """append element at given position"""
         self.sequence.append(element)
         self.session.add(element)
         self.session.commit()
@@ -638,15 +678,19 @@ class Show():
             self.change_position(element, pos)
 
     def append_module(self, element):
+        """add elemement at end of sequence"""
         self.add_module(element)
     
     def add_empty_module(self, pos=None):
+        """add a empty module without any elements"""
         self.add_module(None, pos)
 
     def append_empty_module(self):
+        """add a empty module without any elements at end of sequence"""
         self.add_module(None)
 
     def change_position(self, element, new_pos, first=True):
+        """change position of sequence elements"""
         cur_pos = element.position
         if cur_pos < new_pos:
             next_pos = cur_pos+1
@@ -661,35 +705,49 @@ class Show():
         
         self.change_position(element, new_pos)
 
-
     def _load_objects_from_db(self):
-        self.sequence = self.session.query(SequenceModule).filter(SequenceModule.sequence_name==self.sequence_name).all()
+        """load show from database"""
+        self.sequence = self.session.query(SequenceModule).\
+            filter(SequenceModule.sequence_name==self.sequence_name).all()
 
     def _get_object_at_pos(self, position):
+        """returns object on given playlist position"""
         for s in self.sequence:
             if s.position == position:
                 return s
 
     def first(self):
+        """resets playlist counter and returns first object"""
         self.current_pos = 0
         return self._get_object_at_pos(self.current_pos)
+
+    def handle_global_event(self, evnet_name):
+        """preperation for future development
+            handle a global event that must be handeled emidetly
+            > e.g Blury @chapter 10 --> call event pause
+        """
+        #gets called by the notify function
+        #compares evnet_name to global events
+        #if True:
+        #   signal.send("") send out new event
+        #else:
+        #   self.happened_event_queue.put(evnet_name)
+        pass
 
     def next(self):
         """returns next element and handles logic elements"""
 
-        for e in self.jumptotarget_elements:
-            if e.logic_element.name in self.happened_event:
-                self.happened_event.remove(e.logic_element.name)
-                self.current_pos = e.position
+        while not self.happened_event_queue.empty():
+            event = self.happened_event_queue.get()
+            for e in self.jumptotarget_elements:
+                if e.logic_element.name in event:
+                    self.current_pos = e.position
 
         if self.current_pos < len(self.sequence)-1:
             self.current_pos = self.current_pos+1
-            obj =  self._get_object_at_pos(self.current_pos)
+            obj = self.current_element
         else:
             obj = SequenceModule.viewcontroll_placeholder()
-            #TODO handle playlist end
-            #self.current_pos = 0
-            #print logger warning plalist restarts
         
         if not obj:
             raise Exception("playlist at end")

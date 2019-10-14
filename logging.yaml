@@ -3,13 +3,13 @@ version: 1
 disable_existing_loggers: True
 formatters:
     simple:
-        format: '%(asctime)s %(process)-d %(thread)-d %(processName)-12s %(levelname)-8s %(message)s'
+        format: '%(asctime)s %(process)-d %(processName)-12s %(thread)-d %(threadName)-21s %(levelname)-8s %(message)s'
 #        format: '%(asctime)s %(name)-26s %(levelname)-8s %(processName)-12s %(message)s'
 
 handlers:
     console:
         class: logging.StreamHandler
-        level: INFO
+        level: DEBUG
         formatter: simple
         stream: ext://sys.stdout
 

@@ -36,6 +36,9 @@ class DummyMpv:
         self.queue_recv = queue_recv
         self.name = parent_name
 
+        self.can_run = threading.Event()
+        self.can_run.set() 
+
     def run(self):
         if isinstance(self.logger_config, logging.Logger):
             self.logger = self.logger_config
@@ -70,13 +73,25 @@ class DummyMpv:
                 self.logger.debug("--> recived data: '{}':'{}'"
                     .format(type(data), str(data)))
 
-                filepath, time = data
-                self.next_image_display_time_queue.put(time)  
-                self.player.playlist_append(filepath)
-                self.logger.info("Appending File {} at pos {} in playlist.".format(str(data), len(self.player.playlist)))
-                if start_image:
-                    self.playlist_next()
-                    start_image = False
+                if isinstance(data, tuple):
+                    filepath, duration = data
+                    self.next_image_display_time_queue.put(duration)  
+                    self.player.playlist_append(filepath)
+                    self.logger.info("Appending File {} at pos {} in playlist.".format(str(data), len(self.player.playlist)))
+                    if start_image:
+                        self.playlist_next()
+                        start_image = False
+                elif isinstance(data, str):
+                    if data == "pause":
+                        if self.playing:
+                            self.player_pause()
+                    elif data == "resume":
+                        if not self.playing:
+                            self.player_resume()
+                    elif data == "next":
+                        pass
+                        #self.playlist_next()
+
 
         except Exception as e:
             try:
@@ -85,6 +100,21 @@ class DummyMpv:
                 self.logger.error("Uncaught exception in process '{}'"
                         .format(self.name), 
                     exc_info=(e))
+
+    @property
+    def playing(self):
+        if self.can_run.is_set():
+            return True
+        else:
+            return False
+
+    def player_pause(self):
+        self.player['pause'] = True
+        self.can_run.clear()
+
+    def player_resume(self):
+        self.player['pause'] = False
+        self.can_run.set()
 
     def playlist_next(self):
         self.player.playlist_next()
@@ -136,6 +166,7 @@ class DummyMpv:
         self.mpv_observer_stat('time-pos', 0)
         self.mpv_observer_stat('time-remaining', duration)
         while tr>0.001:  #  WARNING time offset through process times
+            self.can_run.wait()
             time.sleep(dt)
             tr -= dt
             self.mpv_observer_stat('time-pos', duration-tr)

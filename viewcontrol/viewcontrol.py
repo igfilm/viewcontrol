@@ -7,30 +7,50 @@ import logging.config
 import logging.handlers
 import os
 import sys
-import optparse
+import argparse
 import yaml
 
-import sqlalchemy
-from sqlalchemy import create_engine
-
 from blinker import signal
+from pynput import keyboard
 
 import functools
-
-
-import viewcontrol.vctools as vctools
 
 import mpv
 
 import viewcontrol.show as show
-from viewcontrol.remotec.commandprocess import CommandProcess
+from viewcontrol.remotec.processcmd import ProcessCmd, ThreadCmd
 from viewcontrol.playback.processmpv import ProcessMpv, ThreadMpv
+
+from viewcontrol.version import __version__ as package_version
 
 class ViewControl(object):
 
-    multiprocess = False
-
     def __init__(self, args):
+
+        parser = argparse.ArgumentParser(
+            description='media playback',
+            epilog='fuubar')
+        parser.add_argument('project_folder',
+            help="folder path of project containing db-files and media-files")
+        parser.add_argument('-r', '--content_aspect_ratio', 
+            action='store', 
+            choices=['c', 'cinescope', '21:9', 'w', 'widescreen', '16:9'],
+            help="sontent aspect ratio of movie played by BluRay-Player")
+        parser.add_argument('-s', '--screen', 
+            action='store', 
+            default=42, 
+            type=int,
+            help="screen number/id for media playback")
+        parser.add_argument('-m', '--modules', 
+            action='store', 
+            nargs='*', 
+            default=None,
+            help="")
+        parser.add_argument('--threading', 
+            action='store_true',
+            help='run programm only with threading intead of multiprocesing')
+        parser.add_argument('--version', action='version', version=package_version)
+        self.argpars_result = parser.parse_args(args[1:])
 
         #Loading Logger with Configutation File
         logger_config_path = 'logging.yaml'
@@ -42,13 +62,15 @@ class ViewControl(object):
             logging.basicConfig(level=logging.INFO)
 
         self.logger = logging.getLogger(threading.current_thread().name)
-        self.logger.info("###################################")
+        self.logger.info("##################################")
+        self.logger.info("Program start with command line options: {}".
+            format(str(self.argpars_result)))
 
         #Add logging with traceback for all unhandled exeptions in main thread
         sys.excepthook = self.handle_exception
 
         # Queue to enable logging from proscesses to one single file
-        if ViewControl.multiprocess:
+        if not self.argpars_result.threading:
             q = multiprocessing.Queue()
         else:
             q = queue.Queue()
@@ -76,14 +98,14 @@ class ViewControl(object):
         self.lp.start()
         self.logger.info("Started '{}' with pid 'N.A.'".format(self.lp.name, ))
 
-        if ViewControl.multiprocess:
-            self.command_queue = multiprocessing.Queue()
-            self.status_queue = multiprocessing.Queue()
+        if not self.argpars_result.threading:
+            self.cmd_controll_queue = multiprocessing.Queue()
+            self.cmd_status_queue = multiprocessing.Queue()
             self.mpv_controll_queue = multiprocessing.Queue()
             self.mpv_status_queue = multiprocessing.Queue()
         else:
-            self.command_queue = queue.Queue()
-            self.status_queue = queue.Queue()
+            self.cmd_controll_queue = queue.Queue()
+            self.cmd_status_queue = queue.Queue()
             self.mpv_controll_queue = queue.Queue()
             self.mpv_status_queue = queue.Queue()
 
@@ -112,120 +134,136 @@ class ViewControl(object):
         self.sig_mpv_time_remain = signal("mpv_time_remain")
         self.sig_mpv_time_remain.connect(self.subscr_time)
 
-        # will be replaced by options of optparse
-        self.logger.info("Recived Keyargs: {}".format(args))
-        print(type(self.logger))
+        self.sig_cmd_command = signal("cmd_command")
+        self.sig_cmd_command.connect(self.send_command)
 
-        config = vctools.read_yaml()
-        self.restart_at_error = config.get("restart_at_error")
-
-        if len(args) > 2:
-            try:
-                arg_path = os.path.abspath(args[1])
-            except OSError:
-                arg_path = None
+        if not self.argpars_result.modules:
+            modules = ["CommandDenon", "CommandAtlona"]
         else:
-            arg_path = None   
+            modules = self.argpars_result.modules
 
-        if arg_path:
-            self.project_folder = arg_path
-            self.logger.info("Project Folder From Argv: {}".format(self.project_folder))
-        else:
-            self.project_folder = config.get('media_file_path')
-            self.logger.warning("Loaded filepath from config file: {}".format(self.project_folder))
-
-        if len(args) == 3 and args[2] == "widescreen":
-            self.content_aspect = "widescreen"
-        else:
-            self.content_aspect = "cinescope"
-        self.logger.info("Aspect Ratio of content is {}.".format(self.content_aspect))
-        
-        if len(args) == 4:
-            self.screen_id = int(args[3])
-        else:
-            self.screen_id = 10
-        self.logger.info("Screen ID is {}.".format(self.screen_id))
-
-        modules=["CommandDenon", "CommandAtlona"]
-        modules=list()
-        if ViewControl.multiprocess:
-            self.process_cmd = multiprocessing.Process(
-                target=CommandProcess.command_process, 
-                name="process_cmd", 
-                args=(self.config_queue_logger, 
-                    self.command_queue, 
-                    self.status_queue, 
-                    modules),
-                daemon=True)
+        if not self.argpars_result.threading:
+            self.process_cmd = ProcessCmd(self.config_queue_logger, 
+                    self.cmd_status_queue, 
+                    self.cmd_controll_queue, 
+                    modules)
             
             self.process_mpv = ProcessMpv(self.config_queue_logger,
                     self.mpv_status_queue, 
                     self.mpv_controll_queue,)
         else:
-            self.process_cmd = threading.Thread(
-                target=CommandProcess.command_process, 
-                name="process_cmd", 
-                args=(self.logger, self.command_queue, self.status_queue, modules),
-                daemon=True)
+            self.process_cmd = ThreadCmd(self.logger, 
+                self.cmd_status_queue,
+                self.cmd_controll_queue,
+                modules)
             
             self.process_mpv = ThreadMpv(self.logger,
                     self.mpv_status_queue, 
                     self.mpv_controll_queue,)
             
-
         self.processeses = []
         self.processeses.append(self.process_cmd)
         self.processeses.append(self.process_mpv)
 
         self.logger.info("Initialized __main__ with pid {}".format(os.getpid()))
 
-
+        # blocking funtions for appending next eleement to player playlist
         self.event_next_happend = threading.Event()
         self.event_append = threading.Event()
+
+        # player currently playing media or is paused
+        self.playing = threading.Event()
+        self.playing.set() 
+
+        # dangerous, listen to all kexpresses. Event generator for Testing.
+        listener = keyboard.Listener(
+            on_press=self.on_press,
+            on_release=self.on_release)
+        listener.setName("key_listener")
+        listener.setDaemon(True)
+        listener.start() 
+
 
     def main(self):
 
         for process in self.processeses:
             process.start()
 
-        self.playlist = show.Show('testing', project_folder=self.project_folder)
-        self.playlist.load_show()
+        self.playlist = show.Show('testing', 
+            project_folder=self.argpars_result.project_folder, 
+            content_aspect_ratio=self.argpars_result.content_aspect_ratio)
 
         self.logger.info("loaded Show: {}".format(self.playlist.sequence_name))
 
         self.player_append_current_from_playlist()
+        for c in self.playlist.current_element.list_commands:
+            self.sig_cmd_command.send(c)
 
         while True:
             self.event_append.wait()  # not bloking with if .is_set()
             self.player_append_next_from_playlist()
             self.event_append.clear()
+            self.event_next_happend.wait()
+            for c in self.playlist.current_element.list_commands:
+                self.sig_cmd_command.send(c)
+
+    def send_command(self, command_obj):
+        self.logger.info("Sending Commandobject '{}'".format(command_obj))
+        self.cmd_controll_queue.put(command_obj)
+
+    def player_resume(self):
+        """resume playback and timers"""
+        if not self.playing.is_set():
+            self.playing.set()
+            self.mpv_controll_queue.put("resume")
+            self.cmd_controll_queue.put("resume")
+
+    def player_pause(self):
+        """pause playback and timers"""
+        if self.playing.is_set():
+            self.playing.clear()
+            self.mpv_controll_queue.put("pause")
+            self.cmd_controll_queue.put("pause")
+
+    def player_playpause(self):
+        """toogle playback and timers"""
+        if self.playing.is_set():
+            self.player_pause()
+        else:
+            self.player_resume()
 
     def player_append_next_from_playlist(self):
+        """Append next playlist element to player"""
         self.player_append_element(self.playlist.next())
     
     def player_append_current_from_playlist(self):
+        """Append current playlist element to player"""
         self.player_append_element(self.playlist.current_element)
 
     def player_append_element(self, element):
-        print(type(element))
+        """Append SequenceElement to player"""
         if isinstance(element.media_element, show.StillElement):
-            self.mpv_controll_queue.put((element.media_element.file_path_w, element.time))
+            self.mpv_controll_queue.put((element.media_element.file_path, element.time))
         else:
-            self.mpv_controll_queue.put((element.media_element.file_path_w, None))
+            self.mpv_controll_queue.put((element.media_element.file_path, None))
 
     def subscr_time(self, time):
-        print(self.event_next_happend.is_set(), time)
+        """Function subscribed to remaining time, triggering player_append"""
         if self.event_next_happend.is_set() and time and time < 1:
             self.event_next_happend.clear()
             self.event_append.set()
 
     def subscr_listen_process_mpv(self, msg):
+        """Function subscribed to property changes of player, sets 
+            event_next_happend which used for synchronisation of playlist and
+            player.
+        """
         self.logger.debug("'mpv_prop_chaged' send: {}".format(msg))
         if msg[0] == 'playlist-pos' and self.playlist:
-            self.duration = self.playlist.current_element.time
             self.event_next_happend.set()
     
     def thread_listen_process_mpv(self):
+        """Thread listenig to player Queue. Forwards Recived data as Event"""
         while True:
             data = self.mpv_status_queue.get(block=True)
             if data[0] == 'time-pos':
@@ -237,25 +275,42 @@ class ViewControl(object):
                 self.sig_mpv_prop.send(data)
 
     def subscr_listen_process_cmd(self, msg):
+        """Subscriber to Event 'cmd_prop_chaged' for logging."""
         self.logger.debug("'cmd_prop_chaged' send: {}".format(msg))
     
     def thread_listen_process_cmd(self):
+        """Thread listenig to command Queue. Forwards Recived data as Event"""
         while True:
-            data = self.status_queue.get(block=True)
+            data = self.cmd_status_queue.get(block=True)
             self.sig_cmd_prop.send(data)
 
+    def on_press(self, key):
+        """key event on press"""
+        try:
+            self.logger.debug('alphanumeric key {0} pressed'.format(key))
+        except AttributeError:
+            self.logger.debug('special key {0} pressed'.format(key))
+        #self.sig_key_event.send(key)
+        if key == keyboard.Key.page_down:
+            self.player_pause()
+        elif key == keyboard.Key.page_up:
+            self.player_resume()
+        elif key == keyboard.Key.end:
+            self.playlist.notify("start trailer")
+            #self.player_playpause()
+
+    def on_release(self, key):
+        """key event on release"""
+        pass
+
     def handle_exception(self, exc_type, exc_value, exc_traceback):
-        """
-        exeption handler to log unhandled expetions in main thread
-        """
+        """exeption handler to log unhandled expetions in main thread"""
         if issubclass(exc_type, KeyboardInterrupt):
             sys.__excepthook__(exc_type, exc_value, exc_traceback)
             return
         if not "Uncaught exception in subprocess:" in str(exc_value):
             self.logger.error(
                 "Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
-        #for p in multiprocessing.active_children():
-        #    p.terminate()
         if False:#self.restart_at_error:
             self.logger.warning("Restarting Programm")
             os.execv(sys.executable, ['python3'] + sys.argv)

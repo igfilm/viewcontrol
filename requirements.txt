@@ -4,3 +4,4 @@ moviepy==1.0.0
 Wand==0.5.7
 SQLAlchemy==1.3.8
 blinker==1.4
+pynput==1.4.4
