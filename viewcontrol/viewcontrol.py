@@ -150,7 +150,8 @@ class ViewControl(object):
             
             self.process_mpv = ProcessMpv(self.config_queue_logger,
                     self.mpv_status_queue, 
-                    self.mpv_controll_queue,)
+                    self.mpv_controll_queue,
+                    self.argpars_result.screen)
         else:
             self.process_cmd = ThreadCmd(self.logger, 
                 self.cmd_status_queue,
@@ -159,7 +160,8 @@ class ViewControl(object):
             
             self.process_mpv = ThreadMpv(self.logger,
                     self.mpv_status_queue, 
-                    self.mpv_controll_queue,)
+                    self.mpv_controll_queue,
+                    self.argpars_result.screen)
             
         self.processeses = []
         self.processeses.append(self.process_cmd)
@@ -270,7 +272,7 @@ class ViewControl(object):
                 self.sig_mpv_time.send(data[1])
             elif data[0] == 'time-remaining':
                 self.sig_mpv_time_remain.send(data[1])
-                #self.logger.debug(data[1])
+                self.logger.debug(data[1])
             else:
                 self.sig_mpv_prop.send(data)
 
@@ -296,7 +298,7 @@ class ViewControl(object):
         elif key == keyboard.Key.page_up:
             self.player_resume()
         elif key == keyboard.Key.end:
-            self.playlist.notify("start trailer")
+            self.playlist.notify("exit loop")
             #self.player_playpause()
 
     def on_release(self, key):

@@ -12,29 +12,30 @@ import mpv
 
 class ProcessMpv(multiprocessing.Process):
     
-    def __init__(self, logger_config, queue_send, queue_recv):
-        super().__init__(name='BenjaminBluemchen')
-        self._dummy = DummyMpv(logger_config, queue_send, queue_recv, self.name)
+    def __init__(self, logger_config, queue_send, queue_recv, fs_screen_num):
+        super().__init__(name='ProcessMPV')
+        self._dummy = DummyMpv(logger_config, queue_send, queue_recv, self.name, fs_screen_num)
 
     def run(self):
         self._dummy.run()
 
 class ThreadMpv(threading.Thread):
 
-    def __init__(self, logger, queue_send, queue_recv):
-        super().__init__(name='BenjaminBluemchen')
-        self._dummy = DummyMpv(logger, queue_send, queue_recv, self.name)
+    def __init__(self, logger, queue_send, queue_recv, fs_screen_num):
+        super().__init__(name='ThreadMpv')
+        self._dummy = DummyMpv(logger, queue_send, queue_recv, self.name, fs_screen_num)
 
     def run(self):
         self._dummy.run()
 
 class DummyMpv:
     
-    def __init__(self, logger_config, queue_send, queue_recv, parent_name):
+    def __init__(self, logger_config, queue_send, queue_recv, parent_name, fs_screen_num):
         self.logger_config = logger_config
         self.queue_send = queue_send
         self.queue_recv = queue_recv
         self.name = parent_name
+        self.fs_screen_num = fs_screen_num
 
         self.can_run = threading.Event()
         self.can_run.set() 
@@ -51,7 +52,7 @@ class DummyMpv:
             #initilaize player
             self.player = mpv.MPV(log_handler=self.mpv_log, ytdl=False)
             self.player['fullscreen'] = True
-            self.player['fs-screen'] = 10
+            self.player['fs-screen'] = self.fs_screen_num
             self.player['on-all-workspaces'] = True
             self.player['keep-open'] = False
             self.player['osc'] = False
@@ -139,7 +140,7 @@ class DummyMpv:
     def mpv_observer_stat(self, prop, value):
         obj_send = (prop, value)
         if prop == 'time-pos' or prop == 'time-remaining':
-            self.queue_send.put(obj_send)
+            self.queue_send.put((prop, round(value, 4)))
             return
         elif prop == "playlist-pos":
             if value==0:
@@ -175,53 +176,3 @@ class DummyMpv:
     def player_reset_playlist(self):
         self.player.play('media/viewcontrol.png')
         self.player['image-display-duration'] = 'INFINITY'
-
-"""
-    def def_process_mpv(self, logger_config, pipe_mpv_statl, queue_mpv):
-        pname=multiprocessing.current_process().name
-        logging.config.dictConfig(logger_config)
-        logger = logging.getLogger(pname)
-        logger.info("Started process_mpv with pid {}".format(os.getpid()))
-        
-        try:
-            # mpv expects logger func without a logger, therfore create new funtion
-            # with log already filled in  
-            mpv_log = functools.partial(self.mpv_log, log=logger)
-
-            #initilaize player
-            player = mpv.MPV(log_handler=mpv_log, ytdl=False)
-            player.fullscreen = True
-            player['fs-screen'] = self.screen_id
-            player['image-display-duration'] = 5
-            player['keep-open'] = True
-            player['osc'] = False
-
-            handler_mpv_observer_stat = functools.partial(self.mpv_observer_stat, log=logger, pipe=pipe_mpv_statl)
-            player.observe_property('filename', handler_mpv_observer_stat)
-            player.observe_property('playlist-pos', handler_mpv_observer_stat)
-            #first immage to avoid idle player
-            player.playlist_append('media/viewcontrol.png')
-
-            while True:
-
-                # wait for data in queue, add file to playlist when data is
-                # type str. Otherwse jump to next track (only used with still)
-                if not queue_mpv.empty():
-                    data = queue_mpv.get()
-                    if isinstance(data, str):                
-                        player.playlist_append(data)
-                        logger.error("Appending File {} at pos {} in playlist.".format(str(data), len(player.playlist)))
-                    else:
-                        player.playlist_next()
-                        logger.error("Call playlist_next")
-                else:
-                    time.sleep(.005)
-                
-        except Exception as e:
-            try:
-                raise
-            finally:
-                logger.error("Uncaught exception in process '{}'"
-                        .format(pname), 
-                    exc_info=(e))
-"""

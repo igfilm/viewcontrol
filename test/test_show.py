@@ -1,6 +1,7 @@
 import unittest
 import os
 import shutil
+import time
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -14,12 +15,9 @@ class TestShow(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.project_folder = os.path.abspath("testing")
+        cls.project_folder = os.path.expanduser("testing")
         if os.path.exists(cls.project_folder):
             shutil.rmtree(cls.project_folder)
-        cls.session = show.create_session(cls.project_folder)
-        show.MediaElement.set_project_path(cls.project_folder)
-        cls.mm = None
 
     @classmethod
     def tearDownClass(cls):
@@ -27,81 +25,103 @@ class TestShow(unittest.TestCase):
         return
 
     def setUp(self):
-        return
+        self.show = show.Show('testing', TestShow.project_folder)
+        print('')
+        self.t_start = time.time()
 
     def tearDown(self):
-        print(self._testMethodName)
-        return
+        print("{} - {} s".format(self._testMethodName, time.time()-self.t_start), sep="")
 
-    def test_0100_media_element_manager(self):
-        TestShow.mm = show.MediaElementManager(TestShow.session)
+    def test_1000_show(self):
+        #is show database created
+        self.assertTrue(os.path.exists(self.project_folder+'/vcproject.db3'))
+        self.assertEqual(self.show.count, 0)
 
-    def test_0101_still_element_jpg(self):
-        still_jpg = show.StillElement("poster", "media/Big_buck_bunny_poster_big.jpg")
-        TestShow.mm.add_element(still_jpg)
+    def test_1101_append_pdf_big(self):
+        self.assertEqual(self.show.count, 0)
+        #add pdf, check if files are created        
+        self.show.add_module_still("poster", "media/bbb_poster.pdf", 8)
+        self.assertTrue(os.path.exists(self.project_folder+'/bbb_poster_w.jpg'))
+        self.assertTrue(os.path.exists(self.project_folder+'/bbb_poster_c.jpg'))
+        self.assertEqual(self.show.count, 1)
 
-    def test_0102_still_element_png(self):
-        still_png = show.StillElement("screen", "media/Big_Buck_Bunny_1080p_Opening_Screen.png")
-        TestShow.mm.add_element(still_png)
+    def test_1102_append_same(self):
+        self.assertEqual(self.show.count, 1)
+        #add same (source-)file(name) twice , check if counter is added on files
+        self.show.add_module_still("anouncement", "media/bbb_title_anouncement.jpg", 2)
+        self.show.add_module_still("anouncement_copy", "media/bbb_title_anouncement.jpg", 3)
+        self.assertTrue(os.path.exists(self.project_folder+'/bbb_title_anouncement_c.jpg'))
+        self.assertTrue(os.path.exists(self.project_folder+'/bbb_title_anouncement_c_2.jpg'))
+        self.assertTrue(os.path.exists(self.project_folder+'/bbb_title_anouncement_w.jpg'))
+        self.assertTrue(os.path.exists(self.project_folder+'/bbb_title_anouncement_w_2.jpg'))
+        self.assertEqual(self.show.count, 3)
 
-    def test_0103_still_element_png(self):
-        TestShow.sele = show.StartElement()
-        #wird nicht zu liste hinzugefügt
+    def test_1203_delete_same(self):
+        self.assertEqual(self.show.count, 3)
+        self.show.remove_module(2)
+        self.assertEqual(self.show.count, 2)
+        #self.assertEqual(self.media_elements)
+        #check if obj is still in MEdiaElements
 
-    def test_0104_video_element_mp4(self):
-        video_avi = show.VideoElement("bbb", "media/Big_Buck_Bunny_1080p_clip.mp4")
-        TestShow.mm.add_element(video_avi)
+    def test_1213_append_identical_name(self):
+        self.assertEqual(self.show.count, 2)
+        #try to add same name twice. result should be a two behind name of 
+        #second sequence module.
+        self.show.add_module_still("bbb_picture", "media/bbb_poster_bunny_big.jpg", 5)
+        self.show.add_module_still("bbb_picture", "media/bbb_poster_rodents_big.jpg", 5)
+        bbb1 = self.show.get_module_with_element_name("bbb_picture")
+        self.assertIsNotNone(bbb1)
+        self.assertEqual(bbb1.media_element.file_path_c, "bbb_poster_bunny_big_c.jpg")
+        bbb2 = self.show.get_module_with_element_name("bbb_picture_2")
+        self.assertIsNotNone(bbb2)
+        self.assertEqual(bbb2.media_element.file_path_c, "bbb_poster_rodents_big_c.jpg")
+        self.assertEqual(self.show.count, 4)
 
-    def test_0200_logic_element_manager(self):
-        TestShow.llist = show.LogicElementManager(TestShow.session)
+    def test_1304_append_loop(self):
+        self.assertEqual(self.show.count, 4)
+        #add loop and change its position in playlist (this procedure shall be used in GUI to)
+        self.show.add_module_loop(3, pos=3)
+        self.assertEqual(self.show.get_module_with_element_name("LoopStart_1").position, 3)
+        self.assertEqual(self.show.get_module_with_element_name("LoopEnd_1").position, 4)
+        self.show.move_element_up(3)
+        self.assertEqual(self.show.get_module_with_element_name("LoopStart_1").position, 2)
+        self.assertEqual(self.show.get_module_with_element_name("LoopEnd_1").position, 4)
+        self.show.move_element_down(4)
+        self.assertEqual(self.show.get_module_with_element_name("LoopStart_1").position, 2)
+        self.assertEqual(self.show.get_module_with_element_name("LoopEnd_1").position, 5)
 
-    def test_0201_loop_element(self):
-        TestShow.llist.add_element_loop(3)
+    def test_1305_append_jumpto(self):
+        self.assertEqual(self.show.count, 6)
+        self.show.add_module_jumptotarget("exit loop", 
+            commands=show.Command(
+                "dimm light", "CommandDmx", "Group10-Intesity", 30))
+        self.assertEqual(self.show.count, 7)
 
-    def test_0300_show(self):
-        TestShow.show = show.Show('testing', TestShow.session)
+    def test_1320_append_video(self):
+        self.assertEqual(self.show.count, 7)
+        self.show.add_module_video("clip2_kite", "media/Big_Buck_Bunny_1080p_clip2.avi", pos=7)
+        self.show.add_module_video("clip1_apple", "media/Big_Buck_Bunny_1080p_clip.mp4", pos=7)
+        self.assertTrue(os.path.exists(self.project_folder+'/Big_Buck_Bunny_1080p_clip2_c.mp4'))
+        self.assertTrue(os.path.exists(self.project_folder+'/Big_Buck_Bunny_1080p_clip2_w.mp4'))
+        self.assertTrue(os.path.exists(self.project_folder+'/Big_Buck_Bunny_1080p_clip_c.mp4'))
+        self.assertTrue(os.path.exists(self.project_folder+'/Big_Buck_Bunny_1080p_clip_w.mp4'))
+        self.assertEqual(self.show.get_module_with_element_name("clip2_kite").position, 8)
+        self.assertEqual(self.show.get_module_with_element_name("clip1_apple").position, 7) 
+        self.assertEqual(self.show.count, 9)
 
-    def test_0301_show_add_elements(self):
-        TestShow.show.add_module(TestShow.mm.get_element_with_name("poster"))
-        TestShow.show.add_module(TestShow.llist.get_element_with_name("LoopStart_1"))
-        TestShow.show.add_module(TestShow.mm.get_element_with_name("screen"))
-        TestShow.show.add_module(TestShow.mm.get_element_with_name("bbb"))
-        TestShow.show.add_module(TestShow.llist.get_element_with_name("LoopEnd_1"))
+    def test_1401_add_command(self):
+        commands=[
+            show.Command("jump to start", "CommandDenon", "Track Jump", 1),
+            show.Command("swich video to BluRay", "CommandAtlona", "Set Output", 1, 2)]
+        self.show.add_command_to_pos(8, commands)
+        command2 = show.Command("swich video to BluRay", "CommandAtlona", "Set Output", 1, 3)
+        self.show.add_command_to_pos(0, command2)
+        #add asserts for check
 
-    def test_0302_add_jumptotarget(self):
-        TestShow.show.add_jumptotarget("start trailer")
-        self.assertTrue(True)
+    #def _test_1205_append_gif(self):
+    #    self.show.add_module_still("chemgif", "media/1.3-B.gif", 10)
 
-    def test_0303_show_add_element_with_command_list(self):
-        command = show.Command("test1", "CommandDenon", "Pause")
-        TestShow.show.add_module(TestShow.mm.get_element_with_name("poster"), commands=command)
-
-    def test_0304_show_add_command_to_element(self):
-        command = show.Command("test2", "CommandDenon", "Play")
-        TestShow.show.sequence[0].add_command(command)
-        TestShow.show.save_show()
-
-    def test_0305_video_element_avi(self):
-        video_avi = show.VideoElement("bbb_end", "media/Big_Buck_Bunny_1080p_clip2.avi")
-        TestShow.show.add_module(video_avi)
-
-    def test_0305_show_change_position(self):
-        #TestShow.show.change_position(TestShow.show.sequence[3], 1)
-        #need funtion to get element of position
-        return
-
-    def test_0400_load_show_from_db(self):
-        TestShow.playlist = show.Show("testing", TestShow.session)
-        TestShow.playlist.load_show()
-
-    def test_0500_playlist_next(self):
-        #test of loop defineds in 0301 and 0201
-        i = 0
-        while i<20:
-            TestShow.playlist.next()
-            i = i + 1
 
 
 if __name__ == '__main__':
-    unittest.main()
-
+    unittest.main(failfast=True)

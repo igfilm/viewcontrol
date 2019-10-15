@@ -4,6 +4,7 @@ import time
 import datetime
 from copy import deepcopy as dc
 from numpy import array, arange
+import math
 from shutil import copyfile
 import queue
 
@@ -226,6 +227,7 @@ class LogicElementManager:
         self.add_element(loop_start)
         loop_end = LoopEnd("LoopEnd_{}".format(key), key, cycles)
         self.add_element(loop_end)
+        return loop_start, loop_end
 
 class MediaElement(Base):
     """Base class for Media Elements.
@@ -286,6 +288,9 @@ class MediaElement(Base):
 
     @staticmethod
     def create_abs_filepath(abs_source, mid, extension, num=1):
+        """create filepath from source filename. if filename already exists,
+        add a number at the end.
+        """
         target_file_core = os.path.splitext(os.path.basename(abs_source))[0]
         if num > 1:
             midnum = "{}_{}".format(mid, num)
@@ -293,11 +298,14 @@ class MediaElement(Base):
             midnum = mid
         target_file = os.path.join(
             MediaElement.project_path,
-            target_file_core + midnum + "." + extension
+            target_file_core + midnum + extension
         )
         if os.path.exists(target_file):
-            target_file = StartElement.create_abs_filepath(abs_source, mid, extension, num=num+1)
-        return target_file, os.path.relpath(target_file, start=MediaElement.project_path)  
+            return MediaElement.create_abs_filepath(
+                abs_source, mid, extension, num=num+1)
+        else:
+            return target_file, \
+                os.path.relpath(target_file, start=MediaElement.project_path)  
 
     @property
     def file_path(self):
@@ -341,7 +349,7 @@ class VideoElement(MediaElement):
 
     def __init__(self, name, file_path):
         
-        adst_c, rdst_c = MediaElement.create_abs_filepath(file_path, "_c", "mp4")
+        adst_c, rdst_c = MediaElement.create_abs_filepath(file_path, "_c", ".mp4")
         dur, car = self.insert_video(file_path, adst_c, cinescope=True)
         self.duration = dur
         content_aspect_ratio = car
@@ -349,7 +357,7 @@ class VideoElement(MediaElement):
             adst_w = adst_c
             rdst_w = rdst_c
         else:
-            adst_w, rdst_w = MediaElement.create_abs_filepath(file_path, "_w", "mp4")
+            adst_w, rdst_w = MediaElement.create_abs_filepath(file_path, "_w", ".mp4")
             self.insert_video(file_path, adst_w, content_aspect=content_aspect_ratio, cinescope=False)
         super().__init__(name, rdst_w, rdst_c)
 
@@ -363,7 +371,7 @@ class VideoElement(MediaElement):
             cclip = ColorClip(size=(1920, 1080), color=(0, 0, 0), duration=video_clip.duration)
             video_clip = video_clip.fx(resize, height=810).set_position('center')
             result = CompositeVideoClip([cclip, video_clip])
-            result.write_videofile(path_dst,fps=video_clip.fps)
+            result.write_videofile(path_dst,fps=video_clip.fps, codec='libx265')
         else:
             copyfile(path_scr, path_dst)
         return video_clip.duration, content_aspect
@@ -402,8 +410,12 @@ class StillElement(MediaElement):
     }         
         
     def __init__(self, name, file_path):
-        adst_w, rdst_w = MediaElement.create_abs_filepath(file_path, "_w", "jpg")
-        adst_c, rdst_c = MediaElement.create_abs_filepath(file_path, "_c", "jpg")
+        #TODO add handling for gifs if possible
+        _, file_extension = os.path.splitext(file_path)
+        if not file_extension == '.gif':
+            file_extension = ".jpg"
+        adst_w, rdst_w = MediaElement.create_abs_filepath(file_path, "_w", file_extension)
+        adst_c, rdst_c = MediaElement.create_abs_filepath(file_path, "_c", file_extension)
         StillElement.insert_image(file_path, adst_w , False)
         StillElement.insert_image(file_path, adst_c, True)
         super().__init__(name, rdst_w, rdst_c)
@@ -413,18 +425,90 @@ class StillElement(MediaElement):
     def insert_image(path_scr, path_dst, cinescope):
         """Composes images with black background for widescreen and cinescope.
 
+            To many gif frames are causing a segmentation fault!!
         """
+
+        def compose(scr, scale, wand=None):
+            """funtion planned for iporting gif"""
+            with Image(width=1920, height=1080, background=Color("black")) as dst:   
+                if not scale == 1:
+                    scr.scale(*s_size)
+                    #img.resize(*s_size)
+                offset_width = int((dst.width-scr.width)/2)
+                offset_height = int((dst.height-scr.height)/2)
+                dst.composite(operator='over', left=offset_width, top=offset_height, image=scr)
+                if wand:
+                    wand.sequence.append(dst)
+                    wand.save(filename=path_dst)
+                else:
+                    dst.save(filename=path_dst)
+
         if cinescope:
             screesize =  (1920, 810)
         else:
             screesize =  (1920, 1080)
+
+        max_upscale = 2
+
         with Image(filename=path_scr, resolution=300) as scr:
-            with Image(width=1920, height=1080, background=Color("black")) as dst:   
-                scr.scale(int(scr.width/scr.height*screesize[1]), screesize[1])
-                offset_width = int((dst.width-scr.width)/2)
-                offset_height = int((dst.height-scr.height)/2)
-                dst.composite(operator='over', left=offset_width, top=offset_height, image=scr)
-                dst.save(filename=path_dst)
+            a = screesize[0]/scr.width
+            b = screesize[1]/scr.height
+            scale = min(a, b)
+            if max_upscale and scale > max_upscale:
+                scale = max_upscale 
+            s_size = (int(scr.width * scale), int(scr.height * scale))
+
+            if not scr.mimetype == "image/gif":
+                with Image(width=1920, height=1080, background=Color("black")) as dst:   
+                    if not scale == 1:
+                        scr.scale(*s_size)
+                        #img.resize(*s_size)
+                    offset_width = int((dst.width-scr.width)/2)
+                    offset_height = int((dst.height-scr.height)/2)
+                    dst.composite(operator='over', left=offset_width, top=offset_height, image=scr)
+                    dst.save(filename=path_dst)   
+            else:
+                raise Exception("Gifs are not allowed atm")
+                with Image() as wand:
+                    compose(scr.sequence[0], scale, wand=wand)
+                    #wand.sequence.append(scr.sequence[0])
+                    #wand.save(filename=path_dst)
+                
+                for frame in scr.sequence:
+                    with Image(filename=path_dst) as wand:
+                        compose(frame, scale, wand=wand)
+                        print(len(wand.sequence))
+                        #if len(wand.sequence) == 30:
+                        #    break
+         
+"""
+        #def append_gif(dest_img, source_img):
+
+
+                         # only used for gifs, wont affekt other formats
+                        #skip every second, third etc frame if there are to many frames
+                        #if frame % modulo >= modulo-1:
+                        #    continue
+                        #print(frame)
+                        img = scr.sequence[frame]
+                        with Image(width=1920, height=1080, background=Color("black")) as dst:   
+                            if not scale == 1:
+                                img.scale(*s_size)
+                                #img.resize(*s_size)
+                            offset_width = int((dst.width-img.width)/2)
+                            offset_height = int((dst.height-img.height)/2)
+                            dst.composite(operator='over', left=offset_width, top=offset_height, image=img)
+                            wand.sequence.append(dst)
+                            wand.sequence[len(wand.sequence)-1].delay = img.delay
+                            if len(wand.sequence) == max_frames:
+                                break
+                else:
+                    
+                            return
+            print("fuu", len(wand.sequence))
+            wand.type = 'optimize'
+            wand.save(filename=path_dst)
+"""
 
 class StartElement(MediaElement):
     """Class for start MediaElement cointaining the program picture."""
@@ -450,17 +534,18 @@ class MediaElementManager:
         self._load_elements()
 
     def add_element(self, obj, num=1):
+        """add media element to database, if name alreadey exists append number
+        to the name
+        """
         name=obj.name
         if num > 1:
             name='{}_{}'.format(name, num)
-
-        res = self.session.query(MediaElement).filter(MediaElement.name==name).first()
-
-        if res:
+        name_exists = self.session.query(MediaElement).filter(MediaElement.name==name).first()
+        if name_exists:
             self.add_element(obj, num=num+1)
             return
-        if num > 1:
-            obj.name=name
+        #if num > 1:
+        obj.name=name
         self.elements.append(obj)
         self.session.add(obj)
         self.session.commit()
@@ -525,10 +610,10 @@ class SequenceModule(Base):
             #get length of video
             time = element.duration
             pass
-        elif isinstance(element, StillElement) and not time:
-            time = 5
+        elif isinstance(element, StillElement):
+            time = time
         else:
-            time = 3.14
+            time = None
         self.time=time
         self._set_element(element)
         if isinstance(list_commands, list):
@@ -537,11 +622,15 @@ class SequenceModule(Base):
             self.list_commands = [list_commands]
 
     def __repr__(self):
+        return "{}|{}|{}|".format(self.sequence_name, self.position, self.name)
+
+    @property
+    def name(self):
+        """name is equal element name"""
         if self.media_element:
-            element_name = self.media_element.name
+            return self.media_element.name
         else:
-            element_name = self.logic_element.name
-        return "{}|{}|{}|".format(self.sequence_name, self.position, element_name)
+            return self.logic_element.name
 
     def _set_element(self, element):
         """set element depending of class"""
@@ -602,19 +691,18 @@ class Show():
 
     """
     
-    def __init__(self, name, session=None, project_folder=None, content_aspect_ratio='w'):
+    #def __init__(self, name, session=None, project_folder=None, content_aspect_ratio='w'):
+    def __init__(self, name, project_folder, content_aspect_ratio='c'):
         self.current_pos = 0
         self.sequence_name = name
         self.sequence = list()
-        if not session:
-            self.session = create_session(project_folder)
-        else:
-            self.session = session
-            project_folder = os.path.dirname(session.bind.engine.engine.engine.url.database)
+        self.session = create_session(project_folder)
         MediaElement.set_project_path(project_folder)
         MediaElement.set_content_aspect_ratio(content_aspect_ratio)
         self._load_show()
         self.happened_event_queue = queue.Queue()
+        self._mm = MediaElementManager(self.session)
+        self._lm = LogicElementManager(self.session)
 
     #@orm.reconstructor
     def _load_show(self):
@@ -630,6 +718,14 @@ class Show():
                     self.jumptotarget_elements.append(e)
 
     @property
+    def playlist(self):
+        return sorted(self.sequence, key=lambda mod: mod.position)
+
+    @property
+    def media_elements(self):
+        return self._mm.elements()
+
+    @property
     def current_element(self):
         """returns current element"""
         return self._get_object_at_pos(self.current_pos)
@@ -643,6 +739,12 @@ class Show():
         """number of modules in playlist"""
         return len(self.sequence)
 
+    def get_module_with_element_name(self, name):
+        for seqm in self.sequence:
+            if seqm.name == name:
+                return seqm
+        return None
+
     def del_show(self):
         """delete show at database"""
         raise NotImplementedError
@@ -650,24 +752,43 @@ class Show():
     def save_show(self):
         """save show to database"""
         self.session.commit()
-
-    def add_jumptotarget(self, name, pos=None, commands=[]):
-        """apends a jump to target sequence module"""
-        jttm = JumpToTarget(name)
-        self.add_module(jttm, pos)
-        self.jumptotarget_elements.append(jttm)
-
+        
     def add_module(self, element, pos=None, time=None, commands=[]):
         """adds a module to playlist at given pos or at end when pos=None"""
+        if isinstance(element, MediaElement):
+            self._mm.add_element(element)
+        else:
+            self._lm.add_element(element)
         sm = SequenceModule(self.sequence_name, len(self.sequence), 
             element=element, time=time, list_commands=commands)
         self._append_to_pos(sm, pos)
 
-    def add_module_still(self, name, file_path, *kargs):
+    def remove_module(self, pos):
+        self._remove_module(self._get_object_at_pos(pos))
+
+    def add_module_still(self, name, file_path, time, **kwargs):
         """add a module coonatining a StillElement"""
         e = StillElement(name, file_path)
-        MediaElementManager(self.session).add_element(e)
-        self.add_module(e, *kargs)
+        self.add_module(e, time=time, **kwargs)
+
+    def add_module_video(self, name, file_path, **kwargs):
+        """add a module coonatining a StillElement"""
+        e = VideoElement(name, file_path)
+        self.add_module(e, **kwargs)
+
+    def add_module_jumptotarget(self, name, pos=None, commands=[]):
+        """apends a jump to target sequence module"""
+        jttm = JumpToTarget(name)
+        self.add_module(jttm, pos, commands=commands)
+        self.jumptotarget_elements.append(jttm)
+
+    def add_module_loop(self, cycles, pos=None):
+        l_start, l_end = self._lm.add_element_loop(cycles)
+        self.add_module(l_start, pos=pos)
+        if pos:
+            self.add_module(l_end, pos=pos+1)
+        else:
+            self.add_module(l_end, pos=pos)
 
     def _append_to_pos(self, element, pos=None):
         """append element at given position"""
@@ -675,21 +796,36 @@ class Show():
         self.session.add(element)
         self.session.commit()
         if pos:
-            self.change_position(element, pos)
+            self._change_position(element, pos)
 
-    def append_module(self, element):
-        """add elemement at end of sequence"""
-        self.add_module(element)
+    def _remove_module(self, element):
+        self._change_position_end(element)
+        self.sequence.remove(element)
+        self.session.delete(element)
+        self.session.commit()
     
-    def add_empty_module(self, pos=None):
-        """add a empty module without any elements"""
-        self.add_module(None, pos)
+    #def add_empty_module(self, pos=None):
+    #    """add a empty module without any elements"""
+    #    self.add_module(None, pos)
 
-    def append_empty_module(self):
-        """add a empty module without any elements at end of sequence"""
-        self.add_module(None)
+    #def append_empty_module(self):
+    #    """add a empty module without any elements at end of sequence"""
+    #    self.add_module(None)
 
-    def change_position(self, element, new_pos, first=True):
+    def move_element_up(self, pos):
+        self.change_position(pos, pos-1)
+
+    def move_element_down(self, pos):
+        self.change_position(pos, pos+1)
+
+    def change_position(self, old_pos, new_pos):
+        element = self._get_object_at_pos(old_pos)
+        self._change_position(element, new_pos)
+
+    def _change_position_end(self, element):
+        self._change_position(element, self.count-1)
+
+    def _change_position(self, element, new_pos, first=True):
         """change position of sequence elements"""
         cur_pos = element.position
         if cur_pos < new_pos:
@@ -703,7 +839,7 @@ class Show():
         self._get_object_at_pos(next_pos).position = cur_pos
         element.position = next_pos
         
-        self.change_position(element, new_pos)
+        self._change_position(element, new_pos)
 
     def _load_objects_from_db(self):
         """load show from database"""
@@ -715,6 +851,17 @@ class Show():
         for s in self.sequence:
             if s.position == position:
                 return s
+        raise Exception("Position '{}' does not exist.".format(position))
+
+    def add_command_to_pos(self, pos, command):
+        self._add_command_to_element(self._get_object_at_pos(pos), command)
+    
+    def _add_command_to_element(self, element, command):
+        if not isinstance(command, list):
+            command = [command]
+        for cmd in command:
+            element.add_command(cmd)
+        self.session.commit()
 
     def first(self):
         """resets playlist counter and returns first object"""
