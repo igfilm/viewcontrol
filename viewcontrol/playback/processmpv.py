@@ -140,7 +140,9 @@ class DummyMpv:
     def mpv_observer_stat(self, prop, value):
         obj_send = (prop, value)
         if prop == 'time-pos' or prop == 'time-remaining':
-            self.queue_send.put((prop, round(value, 4)))
+            if value:
+                value = round(value, 4)
+            self.queue_send.put((prop, value))
             return
         elif prop == "playlist-pos":
             if value==0:

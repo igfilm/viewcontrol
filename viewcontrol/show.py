@@ -428,21 +428,6 @@ class StillElement(MediaElement):
             To many gif frames are causing a segmentation fault!!
         """
 
-        def compose(scr, scale, wand=None):
-            """funtion planned for iporting gif"""
-            with Image(width=1920, height=1080, background=Color("black")) as dst:   
-                if not scale == 1:
-                    scr.scale(*s_size)
-                    #img.resize(*s_size)
-                offset_width = int((dst.width-scr.width)/2)
-                offset_height = int((dst.height-scr.height)/2)
-                dst.composite(operator='over', left=offset_width, top=offset_height, image=scr)
-                if wand:
-                    wand.sequence.append(dst)
-                    wand.save(filename=path_dst)
-                else:
-                    dst.save(filename=path_dst)
-
         if cinescope:
             screesize =  (1920, 810)
         else:
@@ -450,7 +435,9 @@ class StillElement(MediaElement):
 
         max_upscale = 2
 
-        with Image(filename=path_scr, resolution=300) as scr:
+        with Image(filename=path_scr) as scr:
+            scr.colorspace = 'rgb'
+            scr.format = 'jpeg'            
             a = screesize[0]/scr.width
             b = screesize[1]/scr.height
             scale = min(a, b)
@@ -469,46 +456,6 @@ class StillElement(MediaElement):
                     dst.save(filename=path_dst)   
             else:
                 raise Exception("Gifs are not allowed atm")
-                with Image() as wand:
-                    compose(scr.sequence[0], scale, wand=wand)
-                    #wand.sequence.append(scr.sequence[0])
-                    #wand.save(filename=path_dst)
-                
-                for frame in scr.sequence:
-                    with Image(filename=path_dst) as wand:
-                        compose(frame, scale, wand=wand)
-                        print(len(wand.sequence))
-                        #if len(wand.sequence) == 30:
-                        #    break
-         
-"""
-        #def append_gif(dest_img, source_img):
-
-
-                         # only used for gifs, wont affekt other formats
-                        #skip every second, third etc frame if there are to many frames
-                        #if frame % modulo >= modulo-1:
-                        #    continue
-                        #print(frame)
-                        img = scr.sequence[frame]
-                        with Image(width=1920, height=1080, background=Color("black")) as dst:   
-                            if not scale == 1:
-                                img.scale(*s_size)
-                                #img.resize(*s_size)
-                            offset_width = int((dst.width-img.width)/2)
-                            offset_height = int((dst.height-img.height)/2)
-                            dst.composite(operator='over', left=offset_width, top=offset_height, image=img)
-                            wand.sequence.append(dst)
-                            wand.sequence[len(wand.sequence)-1].delay = img.delay
-                            if len(wand.sequence) == max_frames:
-                                break
-                else:
-                    
-                            return
-            print("fuu", len(wand.sequence))
-            wand.type = 'optimize'
-            wand.save(filename=path_dst)
-"""
 
 class StartElement(MediaElement):
     """Class for start MediaElement cointaining the program picture."""
@@ -728,7 +675,25 @@ class Show():
     @property
     def current_element(self):
         """returns current element"""
-        return self._get_object_at_pos(self.current_pos)
+        obj = self._get_object_at_pos(self.current_pos)
+        if not obj:
+            raise Exception("playlist at end")
+        if obj.logic_element:
+            if isinstance(obj.logic_element, LoopEnd):
+                if obj.logic_element.counter < obj.logic_element.cycles:
+                    for s in self.sequence:
+                        if isinstance(s.logic_element, LoopStart) \
+                            and s.logic_element.key == obj.logic_element.key:
+                            self.current_pos = s.position                  
+                    obj.logic_element.counter = obj.logic_element.counter + 1
+            
+            return self.next()
+        else:
+            return obj
+        #ce = self._get_object_at_pos(self.current_pos)
+        #if not ce.media_element:
+        #    return self.next()
+        #return ce
 
     def notify(self, name_event):
         """handles events send to show"""
@@ -892,21 +857,8 @@ class Show():
 
         if self.current_pos < len(self.sequence)-1:
             self.current_pos = self.current_pos+1
-            obj = self.current_element
+            return self.current_element
         else:
-            obj = SequenceModule.viewcontroll_placeholder()
+            return SequenceModule.viewcontroll_placeholder()
         
-        if not obj:
-            raise Exception("playlist at end")
-        if obj.logic_element:
-            if isinstance(obj.logic_element, LoopEnd):
-                if obj.logic_element.counter < obj.logic_element.cycles:
-                    for s in self.sequence:
-                        if isinstance(s.logic_element, LoopStart) \
-                            and s.logic_element.key == obj.logic_element.key:
-                            self.current_pos = s.position                  
-                    obj.logic_element.counter = obj.logic_element.counter + 1
-            
-            return self.next()
-        else:
-            return obj
+        

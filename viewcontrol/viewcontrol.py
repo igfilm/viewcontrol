@@ -28,6 +28,7 @@ class ViewControl(object):
     def __init__(self, args):
 
         parser = argparse.ArgumentParser(
+            prog = "viewcontrol",
             description='media playback',
             epilog='fuubar')
         parser.add_argument('project_folder',
@@ -51,12 +52,18 @@ class ViewControl(object):
             help='run programm only with threading intead of multiprocesing')
         parser.add_argument('--version', action='version', version=package_version)
         self.argpars_result = parser.parse_args(args[1:])
+        self.argpars_result.project_folder = os.path.expanduser(self.argpars_result.project_folder)
 
         #Loading Logger with Configutation File
         logger_config_path = 'logging.yaml'
         if os.path.exists(logger_config_path):
             with open(logger_config_path, 'rt') as f:
                 config_log = yaml.safe_load(f.read())
+                for handler in config_log.get('handlers').values():
+                    if 'filename' in handler.keys():
+                        dir_log = os.path.dirname(handler.get("filename"))
+                        if not os.path.exists(dir_log):
+                            os.makedirs(dir_log)
             logging.config.dictConfig(config_log)
         else:
             logging.basicConfig(level=logging.INFO)
@@ -196,6 +203,8 @@ class ViewControl(object):
             content_aspect_ratio=self.argpars_result.content_aspect_ratio)
 
         self.logger.info("loaded Show: {}".format(self.playlist.sequence_name))
+
+        time.sleep(1)
 
         self.player_append_current_from_playlist()
         for c in self.playlist.current_element.list_commands:
