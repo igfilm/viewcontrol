@@ -1,6 +1,12 @@
 > Big Buck Bunny:
     Files:
-
+        bbb_poster.pdf
+        bbb_poster_bunny_big.jpg
+        bbb_poster_rodents_big.jpg
+        bbb_title_anouncement.jpg
+        Big_Buck_Bunny_1080p_clip.mp4
+        Big_Buck_Bunny_1080p_clip2.avi
+        Big_Buck_Bunny_1080p_Opening_Screen.png
     Licence:
         (c) copyright 2008, Blender Foundation / www.bigbuckbunny.org
 > 1,3-Butanediol in 3D:

@@ -63,6 +63,7 @@ class DummyMpv:
             self.player.observe_property('time-remaining', self.mpv_observer_stat)
 
             self.player_reset_playlist()
+            self.dummy_timer_running = False
             start_image = True
 
             self.next_image_display_time_queue = queue.Queue()
@@ -140,9 +141,14 @@ class DummyMpv:
     def mpv_observer_stat(self, prop, value):
         obj_send = (prop, value)
         if prop == 'time-pos' or prop == 'time-remaining':
-            if value:
-                value = round(value, 4)
-            self.queue_send.put((prop, value))
+            if not self.dummy_timer_running:
+                if value:
+                    value = round(value, 4)
+                self.queue_send.put((prop, value))
+            return
+        elif prop == 'd_time-pos' or prop == 'd_time-remaining':
+            if self.dummy_timer_running:
+                self.queue_send.put((prop[2:], round(value, 4)))
             return
         elif prop == "playlist-pos":
             if value==0:
@@ -154,9 +160,11 @@ class DummyMpv:
             else:
                 t = self.next_image_display_time_queue.get()
                 if t:
+                    self.dummy_timer_running = True
                     self.player['image-display-duration'] = t
                     threading.Thread(target=self.thread_time_dummy, args=(t,)).start()
                 else:
+                    self.dummy_timer_running = False
                     self.player['image-display-duration'] = 'INFINITY'
             
         self.queue_send.put(obj_send)
@@ -166,14 +174,14 @@ class DummyMpv:
     def thread_time_dummy(self, duration, fps=10):
         tr = duration
         dt = 1/fps
-        self.mpv_observer_stat('time-pos', 0)
-        self.mpv_observer_stat('time-remaining', duration)
+        self.mpv_observer_stat('d_time-pos', 0)
+        self.mpv_observer_stat('d_time-remaining', duration)
         while tr>0.001:  #  WARNING time offset through process times
             self.can_run.wait()
-            time.sleep(dt)
+            time.sleep(dt-.00029)
             tr -= dt
-            self.mpv_observer_stat('time-pos', duration-tr)
-            self.mpv_observer_stat('time-remaining', tr)
+            self.mpv_observer_stat('d_time-pos', duration-tr)
+            self.mpv_observer_stat('d_time-remaining', tr)
 
     def player_reset_playlist(self):
         self.player.play('media/viewcontrol.png')

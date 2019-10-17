@@ -14,8 +14,6 @@ if __package__ is None and not hasattr(sys, 'frozen'):
     print(path)
     sys.path.insert(0, os.path.dirname(os.path.dirname(path)))
 
-print("Name: ", __name__, "\nFile: ", __file__, "\nPackage: ", __package__)
-
 from viewcontrol.viewcontrol import ViewControl
 
 if __name__ == "__main__":

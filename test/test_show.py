@@ -30,7 +30,7 @@ class TestShow(unittest.TestCase):
         self.t_start = time.time()
 
     def tearDown(self):
-        print("{} - {} s".format(self._testMethodName, time.time()-self.t_start), sep="")
+        print("{:<40} - {} s".format(self._testMethodName, time.time()-self.t_start), sep="")
 
     def test_1000_show(self):
         #is show database created
@@ -69,10 +69,10 @@ class TestShow(unittest.TestCase):
         #second sequence module.
         self.show.add_module_still("bbb_picture", "media/bbb_poster_bunny_big.jpg", 5)
         self.show.add_module_still("bbb_picture", "media/bbb_poster_rodents_big.jpg", 5)
-        bbb1 = self.show.get_module_with_element_name("bbb_picture")
+        bbb1 = self.show._get_module_with_element_name("bbb_picture")
         self.assertIsNotNone(bbb1)
         self.assertEqual(bbb1.media_element.file_path_c, "bbb_poster_bunny_big_c.jpg")
-        bbb2 = self.show.get_module_with_element_name("bbb_picture_2")
+        bbb2 = self.show._get_module_with_element_name("bbb_picture_2")
         self.assertIsNotNone(bbb2)
         self.assertEqual(bbb2.media_element.file_path_c, "bbb_poster_rodents_big_c.jpg")
         self.assertEqual(self.show.count, 4)
@@ -81,45 +81,62 @@ class TestShow(unittest.TestCase):
         self.assertEqual(self.show.count, 4)
         #add loop and change its position in playlist (this procedure shall be used in GUI to)
         self.show.add_module_loop(3, pos=3)
-        self.assertEqual(self.show.get_module_with_element_name("LoopStart_1").position, 3)
-        self.assertEqual(self.show.get_module_with_element_name("LoopEnd_1").position, 4)
+        self.assertEqual(self.show._get_module_with_element_name("#LoopStart_1").position, 3)
+        self.assertEqual(self.show._get_module_with_element_name("#LoopEnd_1").position, 4)
         self.show.move_element_up(3)
-        self.assertEqual(self.show.get_module_with_element_name("LoopStart_1").position, 2)
-        self.assertEqual(self.show.get_module_with_element_name("LoopEnd_1").position, 4)
+        self.assertEqual(self.show._get_module_with_element_name("#LoopStart_1").position, 2)
+        self.assertEqual(self.show._get_module_with_element_name("#LoopEnd_1").position, 4)
         self.show.move_element_down(4)
-        self.assertEqual(self.show.get_module_with_element_name("LoopStart_1").position, 2)
-        self.assertEqual(self.show.get_module_with_element_name("LoopEnd_1").position, 5)
+        self.assertEqual(self.show._get_module_with_element_name("#LoopStart_1").position, 2)
+        self.assertEqual(self.show._get_module_with_element_name("#LoopEnd_1").position, 5)
+
 
     def test_1305_append_jumpto(self):
         self.assertEqual(self.show.count, 6)
-        self.show.add_module_jumptotarget("exit loop", 
+        self.show.add_module_jumptotarget("skip loop", "event_key_end", 
             commands=show.Command(
                 "dimm light", "CommandDmx", "Group10-Intesity", 30))
+        self.assertEqual(self.show._get_module_at_pos(6).name, "#skip loop")
         self.assertEqual(self.show.count, 7)
 
-    def test_1320_append_video(self):
+    def test_1306_add_delete_another_jumpto(self):
         self.assertEqual(self.show.count, 7)
-        self.show.add_module_video("clip2_kite", "media/Big_Buck_Bunny_1080p_clip2.avi", pos=7)
-        self.show.add_module_video("clip1_apple", "media/Big_Buck_Bunny_1080p_clip.mp4", pos=7)
+        self.show.add_module_jumptotarget("#skip loop", "event_xy")
+        self.assertEqual(self.show._get_module_at_pos(7).name, "#skip loop_2")
+        self.show.remove_module(7)
+        self.assertEqual(self.show.count, 7)
+
+    def test_1316_append_text_element(self):
+        self.assertEqual(self.show.count, 7)
+        self.show.add_module_text("next", "next at viewntrol", 5)
+        self.assertTrue(os.path.exists(self.project_folder+'/_next.jpg'))
+        self.assertEqual(self.show.count, 8)
+
+    def test_1317_chnage_text(self):
+        self.show.module_text_change_text(7, "next at viewcontrol")
+        self.assertEqual(self.show._get_module_at_pos(7).media_element.text, "next at viewcontrol")
+
+    def test_1320_append_video(self):
+        commands=[
+            show.Command("jump to start chapter", "CommandDenon", "Track Jump", 1),
+            show.Command("swich video to BluRay", "CommandAtlona", "Set Output", 1, 2)]
+        self.assertEqual(self.show.count, 8)
+        self.show.add_module_video("clip2_kite", "media/Big_Buck_Bunny_1080p_clip2.avi", pos=8, commands=commands)
+        self.show.add_module_video("clip1_apple", "media/Big_Buck_Bunny_1080p_clip.mp4", pos=8)
         self.assertTrue(os.path.exists(self.project_folder+'/Big_Buck_Bunny_1080p_clip2_c.mp4'))
         self.assertTrue(os.path.exists(self.project_folder+'/Big_Buck_Bunny_1080p_clip2_w.mp4'))
         self.assertTrue(os.path.exists(self.project_folder+'/Big_Buck_Bunny_1080p_clip_c.mp4'))
         self.assertTrue(os.path.exists(self.project_folder+'/Big_Buck_Bunny_1080p_clip_w.mp4'))
-        self.assertEqual(self.show.get_module_with_element_name("clip2_kite").position, 8)
-        self.assertEqual(self.show.get_module_with_element_name("clip1_apple").position, 7) 
-        self.assertEqual(self.show.count, 9)
+        self.assertEqual(self.show._get_module_with_element_name("clip2_kite").position, 9)
+        self.assertEqual(self.show._get_module_with_element_name("clip1_apple").position, 8)
+        self.assertEqual(len(self.show._get_module_with_element_name("clip2_kite").list_commands), 2)
+        self.assertEqual(self.show.count, 10)
 
     def test_1401_add_command(self):
-        commands=[
-            show.Command("jump to start", "CommandDenon", "Track Jump", 1),
-            show.Command("swich video to BluRay", "CommandAtlona", "Set Output", 1, 2)]
-        self.show.add_command_to_pos(8, commands)
-        command2 = show.Command("swich video to BluRay", "CommandAtlona", "Set Output", 1, 3)
+        self.assertEqual(self.show.count, 10)
+        command2 = show.Command("swich video to PC", "CommandAtlona", "Set Output", 1, 3)
         self.show.add_command_to_pos(0, command2)
-        #add asserts for check
-
-    #def _test_1205_append_gif(self):
-    #    self.show.add_module_still("chemgif", "media/1.3-B.gif", 10)
+        self.assertEqual(len(self.show._get_module_at_pos(0).list_commands), 1)
 
 
 

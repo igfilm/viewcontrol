@@ -39,7 +39,7 @@ class ViewControl(object):
             help="sontent aspect ratio of movie played by BluRay-Player")
         parser.add_argument('-s', '--screen', 
             action='store', 
-            default=42, 
+            default=1, 
             type=int,
             help="screen number/id for media playback")
         parser.add_argument('-m', '--modules', 
@@ -253,7 +253,8 @@ class ViewControl(object):
 
     def player_append_element(self, element):
         """Append SequenceElement to player"""
-        if isinstance(element.media_element, show.StillElement):
+        if isinstance(element.media_element, show.StillElement) \
+                or isinstance(element.media_element, show.TextElement):
             self.mpv_controll_queue.put((element.media_element.file_path, element.time))
         else:
             self.mpv_controll_queue.put((element.media_element.file_path, None))
@@ -307,7 +308,7 @@ class ViewControl(object):
         elif key == keyboard.Key.page_up:
             self.player_resume()
         elif key == keyboard.Key.end:
-            self.playlist.notify("exit loop")
+            self.playlist.notify("event_key_end")
             #self.player_playpause()
 
     def on_release(self, key):

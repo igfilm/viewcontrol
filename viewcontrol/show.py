@@ -24,6 +24,7 @@ from moviepy.video.fx.resize import resize
 
 from wand.image import Image
 from wand.color import Color
+from wand.drawing import Drawing
 
 
 Base = declarative_base()
@@ -129,6 +130,8 @@ class LogicElement(Base):
     }
 
     def __init__(self, name, key):
+        if not name[0] == '#':
+            name = '#' + name
         self.name = name
         self.key = key
 
@@ -164,11 +167,14 @@ class LoopEnd(LogicElement):
 class JumpToTarget(LogicElement):
     """Saves position for the start of a loop condition"""
 
+    name_event = Column(String(20))
+
     __mapper_args__ = {
         'polymorphic_identity':'JumpToTarget'
     }
 
-    def __init__(self, name):
+    def __init__(self, name, name_event):
+        self.name_event = name_event
         super().__init__(name, None)
 
 
@@ -190,17 +196,14 @@ class LogicElementManager:
         self._load_elements()        
 
     def add_element(self, obj, num=1):
-        # name=obj.name
-        # if num > 1:
-        #     name='{}_{}'.format(name, num)
-
-        # res = self.session.query(LogicElement).filter(LogicElement.name==name).first()
-
-        # if res:
-        #     self.add_element(obj, num=num+1)
-        #     return
-        # if num > 1:
-        #     obj.name=name
+        name=obj.name
+        if num > 1:
+            name='{}_{}'.format(name, num)
+        name_exists = self.session.query(LogicElement).filter(LogicElement.name==name).first()
+        if name_exists:
+            self.add_element(obj, num=num+1)
+            return
+        obj.name=name
         self.elements.append(obj)
         self.session.add(obj)
         self.session.commit()
@@ -217,16 +220,14 @@ class LogicElementManager:
     def _load_elements(self):
         self.elements.extend(self.session.query(MediaElement).all())
 
-    def add_element_loop(self, cycles):
+    def create_elements_loop(self, cycles):
         raw_key = self.session.query(LoopStart.key).order_by(desc(LoopStart.key)).first()
         if not raw_key:
             key = 1
         else:
             key = raw_key[0]
         loop_start = LoopStart("LoopStart_{}".format(key), key)
-        self.add_element(loop_start)
         loop_end = LoopEnd("LoopEnd_{}".format(key), key, cycles)
-        self.add_element(loop_end)
         return loop_start, loop_end
 
 class MediaElement(Base):
@@ -394,6 +395,46 @@ class VideoElement(MediaElement):
         else:
             return '16:9'
 
+class TextElement(MediaElement):
+    """Class for custom-text MediaElement.
+
+    Args:
+        name (str): name of the media element
+        text (str): test displayed at playback
+    
+    """
+
+    __mapper_args__ = {
+        'polymorphic_identity':'TextElement'
+    }         
+        
+    def __init__(self, name, text):
+        if name[0] != '~':
+            name = '~' + name
+        self.name = name
+        filename = '_' + self.name[1:] + ".jpg"
+        self.file_path_w = filename
+        self.file_path_c = filename
+        self.text = text
+        self._make_text_image(text, os.path.join(MediaElement.project_path, filename))
+
+    def change_text(self, new_text):
+        self.text = new_text
+        self._make_text_image(self.text, os.path.join(MediaElement.project_path, self.file_path_c))
+
+    @staticmethod
+    def _make_text_image(text, save_path):
+        with Drawing() as draw:
+            with Image(width=1920, height=1080, background=Color("black")) as image:
+                #draw.font = 'wandtests/assets/League_Gothic.otf'
+                draw.font_size = 100
+                draw.stroke_color = "white"
+                draw.fill_color = "white"
+                draw.text_alignment = 'center'
+                draw.text(int(image.width / 2), int(image.height / 2), text)
+                draw(image)
+                image.save(filename=save_path) 
+
 class StillElement(MediaElement):
     """Class for non-moving MediaElement.
 
@@ -491,7 +532,6 @@ class MediaElementManager:
         if name_exists:
             self.add_element(obj, num=num+1)
             return
-        #if num > 1:
         obj.name=name
         self.elements.append(obj)
         self.session.add(obj)
@@ -557,7 +597,8 @@ class SequenceModule(Base):
             #get length of video
             time = element.duration
             pass
-        elif isinstance(element, StillElement):
+        elif isinstance(element, StillElement) \
+                or isinstance(element, TextElement):
             time = time
         else:
             time = None
@@ -619,6 +660,9 @@ class Show():
     """SequenceObjectManager/PlaylistManager
 
     Manages Sequence Object. Media or LogicElements must be in the Database.
+    Chanhes are commited into the database instantly. Different shows, 
+    specified by their name/sequence_name can be in the same project folder 
+    (reusing, media and logic elements)
 
     Args:
         name                                 (str): name of the show
@@ -638,7 +682,6 @@ class Show():
 
     """
     
-    #def __init__(self, name, session=None, project_folder=None, content_aspect_ratio='w'):
     def __init__(self, name, project_folder, content_aspect_ratio='c'):
         self.current_pos = 0
         self.sequence_name = name
@@ -646,15 +689,11 @@ class Show():
         self.session = create_session(project_folder)
         MediaElement.set_project_path(project_folder)
         MediaElement.set_content_aspect_ratio(content_aspect_ratio)
-        self._load_show()
-        self.happened_event_queue = queue.Queue()
+        self._load_modules_from_db()
+        self._find_jumptotarget_elements()
+        self._happened_event_queue = queue.Queue()
         self._mm = MediaElementManager(self.session)
         self._lm = LogicElementManager(self.session)
-
-    #@orm.reconstructor
-    def _load_show(self):
-        self._load_objects_from_db()
-        self._find_jumptotarget_elements()
 
     def _find_jumptotarget_elements(self):
         """find all jumptotarget_elements in playlist and set the property"""
@@ -675,7 +714,7 @@ class Show():
     @property
     def current_element(self):
         """returns current element"""
-        obj = self._get_object_at_pos(self.current_pos)
+        obj = self._get_module_at_pos(self.current_pos)
         if not obj:
             raise Exception("playlist at end")
         if obj.logic_element:
@@ -690,33 +729,19 @@ class Show():
             return self.next()
         else:
             return obj
-        #ce = self._get_object_at_pos(self.current_pos)
-        #if not ce.media_element:
-        #    return self.next()
-        #return ce
-
-    def notify(self, name_event):
-        """handles events send to show"""
-        self.happened_event_queue.put(name_event)
 
     @property
     def count(self):
         """number of modules in playlist"""
         return len(self.sequence)
 
-    def get_module_with_element_name(self, name):
-        for seqm in self.sequence:
-            if seqm.name == name:
-                return seqm
-        return None
+    def notify(self, name_event):
+        """handles events send to show"""
+        self._happened_event_queue.put(name_event)
 
     def del_show(self):
         """delete show at database"""
         raise NotImplementedError
-
-    def save_show(self):
-        """save show to database"""
-        self.session.commit()
         
     def add_module(self, element, pos=None, time=None, commands=[]):
         """adds a module to playlist at given pos or at end when pos=None"""
@@ -729,45 +754,42 @@ class Show():
         self._append_to_pos(sm, pos)
 
     def remove_module(self, pos):
-        self._remove_module(self._get_object_at_pos(pos))
+        self._remove_module(self._get_module_at_pos(pos))
 
     def add_module_still(self, name, file_path, time, **kwargs):
         """add a module coonatining a StillElement"""
         e = StillElement(name, file_path)
         self.add_module(e, time=time, **kwargs)
 
+    def add_module_text(self, name, text, time, **kwargs):
+        """add a module coonatining a StillElement"""
+        e = TextElement(name, text=text)
+        self.add_module(e, time=time, **kwargs)
+
+    def module_text_change_text(self, pos, new_text):
+        self._module_text_change_text(self._get_module_at_pos(pos), new_text)
+
+    def _module_text_change_text(self, module, new_text):
+        module.media_element.change_text(new_text)
+
     def add_module_video(self, name, file_path, **kwargs):
         """add a module coonatining a StillElement"""
         e = VideoElement(name, file_path)
         self.add_module(e, **kwargs)
 
-    def add_module_jumptotarget(self, name, pos=None, commands=[]):
+    def add_module_jumptotarget(self, name, name_event, pos=None, commands=[]):
         """apends a jump to target sequence module"""
-        jttm = JumpToTarget(name)
+        jttm = JumpToTarget(name, name_event)
         self.add_module(jttm, pos, commands=commands)
         self.jumptotarget_elements.append(jttm)
 
     def add_module_loop(self, cycles, pos=None):
-        l_start, l_end = self._lm.add_element_loop(cycles)
+        l_start, l_end = self._lm.create_elements_loop(cycles)
         self.add_module(l_start, pos=pos)
         if pos:
             self.add_module(l_end, pos=pos+1)
         else:
             self.add_module(l_end, pos=pos)
-
-    def _append_to_pos(self, element, pos=None):
-        """append element at given position"""
-        self.sequence.append(element)
-        self.session.add(element)
-        self.session.commit()
-        if pos:
-            self._change_position(element, pos)
-
-    def _remove_module(self, element):
-        self._change_position_end(element)
-        self.sequence.remove(element)
-        self.session.delete(element)
-        self.session.commit()
     
     #def add_empty_module(self, pos=None):
     #    """add a empty module without any elements"""
@@ -784,13 +806,31 @@ class Show():
         self.change_position(pos, pos+1)
 
     def change_position(self, old_pos, new_pos):
-        element = self._get_object_at_pos(old_pos)
-        self._change_position(element, new_pos)
+        element = self._get_module_at_pos(old_pos)
+        self._change_module_position(element, new_pos)
+
+    def add_command_to_pos(self, pos, command):
+        self._add_command_to_module(self._get_module_at_pos(pos), command)
+
+
+    def _append_to_pos(self, element, pos=None):
+        """append element at given position"""
+        self.sequence.append(element)
+        self.session.add(element)
+        self.session.commit()
+        if pos:
+            self._change_module_position(element, pos)
+
+    def _remove_module(self, element):
+        self._change_position_end(element)
+        self.sequence.remove(element)
+        self.session.delete(element)
+        self.session.commit()
 
     def _change_position_end(self, element):
-        self._change_position(element, self.count-1)
+        self._change_module_position(element, self.count-1)
 
-    def _change_position(self, element, new_pos, first=True):
+    def _change_module_position(self, element, new_pos, first=True):
         """change position of sequence elements"""
         cur_pos = element.position
         if cur_pos < new_pos:
@@ -801,39 +841,38 @@ class Show():
             self.session.commit()
             return
 
-        self._get_object_at_pos(next_pos).position = cur_pos
+        self._get_module_at_pos(next_pos).position = cur_pos
         element.position = next_pos
         
-        self._change_position(element, new_pos)
+        self._change_module_position(element, new_pos)
 
-    def _load_objects_from_db(self):
+    def _load_modules_from_db(self):
         """load show from database"""
         self.sequence = self.session.query(SequenceModule).\
             filter(SequenceModule.sequence_name==self.sequence_name).all()
 
-    def _get_object_at_pos(self, position):
+    def _get_module_with_element_name(self, name):
+        for seqm in self.sequence:
+            if seqm.name == name:
+                return seqm
+        return None
+
+    def _get_module_at_pos(self, position):
         """returns object on given playlist position"""
         for s in self.sequence:
             if s.position == position:
                 return s
         raise Exception("Position '{}' does not exist.".format(position))
-
-    def add_command_to_pos(self, pos, command):
-        self._add_command_to_element(self._get_object_at_pos(pos), command)
     
-    def _add_command_to_element(self, element, command):
+    def _add_command_to_module(self, element, command):
         if not isinstance(command, list):
             command = [command]
         for cmd in command:
             element.add_command(cmd)
         self.session.commit()
 
-    def first(self):
-        """resets playlist counter and returns first object"""
-        self.current_pos = 0
-        return self._get_object_at_pos(self.current_pos)
 
-    def handle_global_event(self, evnet_name):
+    def _handle_global_event(self, evnet_name):
         """preperation for future development
             handle a global event that must be handeled emidetly
             > e.g Blury @chapter 10 --> call event pause
@@ -847,14 +886,16 @@ class Show():
         pass
 
     def next(self):
-        """returns next element and handles logic elements"""
+        """returns next module and handles modules with logic elements"""
 
-        while not self.happened_event_queue.empty():
-            event = self.happened_event_queue.get()
+        #loop through queue until empty
+        while not self._happened_event_queue.empty():
+            event = self._happened_event_queue.get()
             for e in self.jumptotarget_elements:
-                if e.logic_element.name in event:
+                if e.logic_element.name_event in event:
                     self.current_pos = e.position
 
+        #increase current position and return new current element
         if self.current_pos < len(self.sequence)-1:
             self.current_pos = self.current_pos+1
             return self.current_element
