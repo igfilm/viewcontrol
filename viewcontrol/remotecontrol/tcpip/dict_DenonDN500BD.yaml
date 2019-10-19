@@ -1,6 +1,6 @@
 #4-1-1. Key Control
 
-- !CommandDenon
+- !DenonDN500BD
   name: PowerOn
   description: Power On
   string_requ: null
@@ -8,7 +8,7 @@
   parser_send: '@0PW00'
   dict_mapping: null
 
-- !CommandDenon
+- !DenonDN500BD
   name: PowerOff
   description: Power Off
   string_requ: null
@@ -16,7 +16,7 @@
   parser_send: '@0PW01'
   dict_mapping: null
 
-- !CommandDenon
+- !DenonDN500BD
   name: Stop
   description: Stop
   string_requ: null
@@ -24,7 +24,7 @@
   parser_recv: null
   dict_mapping: null
 
-- !CommandDenon
+- !DenonDN500BD
   name: Play
   description: Play
   string_requ: null
@@ -32,7 +32,7 @@
   parser_recv: null
   dict_mapping: null
 
-- !CommandDenon
+- !DenonDN500BD
   name: Pause
   description: Play Pause
   string_requ: null
@@ -40,7 +40,7 @@
   parser_recv: null
   dict_mapping: null
 
-- !CommandDenon
+- !DenonDN500BD
   name: Track Jump
   description: Track/Chapter Jump
   string_requ: null
@@ -48,7 +48,7 @@
   parser_recv:  null
   dict_mapping: null
 
-- !CommandDenon
+- !DenonDN500BD
   name: Track Jump Next
   description: Track/Chapter Jump Next
   string_requ: null
@@ -56,7 +56,7 @@
   parser_recv: null
   dict_mapping: null
 
-- !CommandDenon
+- !DenonDN500BD
   name: Track Jump Next
   description: Track/Chapter Jump Next
   string_requ: null
@@ -64,7 +64,7 @@
   parser_recv: null
   dict_mapping: null
 
-- !CommandDenon
+- !DenonDN500BD
   name: Group Number
   description: Group/Title Jump | Group Number
   string_requ: '@0?PCGp'
@@ -72,7 +72,7 @@
   parser_recv: '@0PCGp([0-9]{4})'
   dict_mapping: null
 
-- !CommandDenon
+- !DenonDN500BD
   name: Group Jump Next
   description: Group/Title Jump Next
   string_requ: null
@@ -80,7 +80,7 @@
   parser_recv: null
   dict_mapping: null
 
-- !CommandDenon
+- !DenonDN500BD
   name: Group Jump Next
   description: TGrouprack/Title Jump Next
   string_requ: null
@@ -88,7 +88,7 @@
   parser_recv: null
   dict_mapping: null
 
-- !CommandDenon
+- !DenonDN500BD
   name: IR Lock
   description: IR Remote Lock
   string_requ: '@0?PCIRLK'
@@ -98,7 +98,7 @@
     00: IR Lock On
     01: IR Lock Off
 
-- !CommandDenon
+- !DenonDN500BD
   name: TMC
   description: Time Mode Code
   string_requ: '@0?PCTMD'
@@ -110,7 +110,7 @@
     TL: Total Ellapsed
     TR: Total Remain
 
-- !CommandDenon
+- !DenonDN500BD
   name: Hide OSD
   description: Complete hiding of the icon displayed on the screen.
   string_requ: '@0?DVHOSD'
@@ -120,7 +120,7 @@
     00: Hide OSD On
     01: Hide OSD Off
 
-- !CommandDenon
+- !DenonDN500BD
   name: Mute
   description: Play
   string_requ: '@0?mt'
@@ -132,7 +132,7 @@
 
 #4-1-3. Current Status Information
 
-- !CommandDenon
+- !DenonDN500BD
   name: Media Status
   description: Media Status
   string_requ: '@0?CD'
@@ -146,7 +146,7 @@
     TC: Tray Close
     TE: Tray Error
 
-- !CommandDenon
+- !DenonDN500BD
   name: Status
   description: Status
   string_requ: '@0?ST'
@@ -166,7 +166,7 @@
     PL: Play
     PP: Pause
 
-- !CommandDenon
+- !DenonDN500BD
   name: Total Track Number
   description: Total Track Number
   string_requ: '@0?Tt'
@@ -174,7 +174,7 @@
   parser_recv: '@0Tt([0-9]{4}|UNKN)'
   dict_mapping: null
 
-- !CommandDenon
+- !DenonDN500BD
   name: Track Number
   description: Track Number
   string_requ: '@0?Tt'
@@ -182,7 +182,7 @@
   parser_recv: '@0Tr([0-9]{4}|UNKN)'
   dict_mapping: null
 
-- !CommandDenon
+- !DenonDN500BD
   name: Total Group Number
   description: Group Number
   string_requ: '@0?PCTG'
@@ -190,7 +190,7 @@
   parser_recv: '@0PCTG([0-9]{4}|UNKN)'
   dict_mapping: null
 
-- !CommandDenon
+- !DenonDN500BD
   name: Group Number
   description: Group Number
   string_requ: '@0?PCGp'
@@ -198,7 +198,7 @@
   parser_recv: '@0PCGp([0-9]{4}|UNKN)'
   dict_mapping: null
 
-- !CommandDenon
+- !DenonDN500BD
   name: Elapse Time
   description: Elapse Time
   string_requ: '@0?ET'
@@ -206,7 +206,7 @@
   parser_recv: '@0ET([0-9]{3})([0-9]{2})([0-9]{2})'
   dict_mapping: null
 
-- !CommandDenon
+- !DenonDN500BD
   name: Remain Time
   description: Remain Time
   string_requ: '@0?RM'
@@ -214,7 +214,7 @@
   parser_recv: '@0RM([0-9]{3})([0-9]{2})([0-9]{2})'
   dict_mapping: null
 
-- !CommandDenon
+- !DenonDN500BD
   name: Time hhh mm ss
   description: Time of @0?ET or @0?RT
   string_requ: null

@@ -1,7 +1,7 @@
 import re
 import yaml
 
-class CommandObj (yaml.YAMLObject):
+class CommandItemBase (yaml.YAMLObject):
     """Stores one sigle command and provides funtions to write and interpretate
 
     device-specific classes are derived from this class. All command objects
@@ -32,7 +32,7 @@ class CommandObj (yaml.YAMLObject):
         self.dict_mapping (str): see Args
     """
     
-    yaml_tag = u'!CommandObj'
+    yaml_tag = u'!CommandItem'
     start_seq=''
     end_seq='\r'
     error_seq=''
@@ -58,8 +58,8 @@ class CommandObj (yaml.YAMLObject):
                 self.parser_recv,
                 type(self.dict_mapping),
                 )
-        
-    def send_command(self, *args):
+
+    def get_send_command(self, *args):
         """sends the command stored parser_send with the given parameters
             
         Args:
@@ -85,7 +85,7 @@ class CommandObj (yaml.YAMLObject):
         print(args)
         return self._combine_command(self.parser_send.format(*args))
     
-    def send_request(self):
+    def get_send_request(self):
         """send the command stored in string_requ"""
 
         return self._combine_command(self.string_requ)
@@ -100,11 +100,11 @@ class CommandObj (yaml.YAMLObject):
             str: combined command
         """
         tmp_start_seq = ''
-        if not CommandObj.start_seq in str_command:
-            tmp_start_seq = CommandObj.start_seq
-        return tmp_start_seq + str_command + CommandObj.end_seq
+        if not CommandItemBase.start_seq in str_command:
+            tmp_start_seq = CommandItemBase.start_seq
+        return tmp_start_seq + str_command + CommandItemBase.end_seq
     
-    def recv_parser(self, recv_str, map=True):
+    def get_recv_parser(self, recv_str, map=True):
         """Extract value(s) from recv_str using regex expresion in parser_recv
         
         Args:
@@ -139,16 +139,16 @@ class CommandObj (yaml.YAMLObject):
         """loads a object dict from yaml file"""
         with open(file_path, 'r') as infile:
             list_commandobj = yaml.load(infile, Loader=yaml.Loader)
-        return CommandObj.convert2dict(list_commandobj)
+        return CommandItemBase.convert2dict(list_commandobj)
 
 
-class dict_commandobj(dict):
+class DictCommandItemLib(dict):
     """dict, which provides custom search functions
     """
 
     def __init__(self, file_path=None, *args, **kwargs):
         # dict.__init__(*args, **kwargs)
-        super(dict_commandobj, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         if file_path:
             self.load_commands(file_path)
 
@@ -159,7 +159,7 @@ class dict_commandobj(dict):
             file_path(str): path to yaml file containig commands
 
         """
-        self.update(CommandObj.load_from_yaml(file_path))
+        self.update(CommandItemBase.load_from_yaml(file_path))
 
     def get_command_from_answer(self, str_answ):
         """finds the command which can interprate the given string
@@ -193,15 +193,3 @@ class dict_commandobj(dict):
             return (key, self.get(key).recv_parser(str_answ))
         else:
             return "command not found"
-
-
-class CommandDenon (CommandObj):
-    yaml_tag = u'!CommandDenon'
-    start_seq='@0'
-    end_seq='\r'
-
-class CommandAtlona (CommandObj):
-    yaml_tag = u'!CommandAtlona'
-    start_seq=''
-    end_seq='\r'
-    error_seq=r'Command FAILED: \((.*)\)'

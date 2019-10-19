@@ -154,7 +154,7 @@ class TestShowPlaylist(unittest.TestCase):
     def test_1305_append_jumpto(self):
         self.assertEqual(self.show.count, 6)
         self.show.add_module_jumptotarget("skip loop", "event_key_end", 
-            commands=show.Command(
+            commands=show.CommandObject(
                 "dimm light", "CommandDmx", "Group10-Intesity", 30))
         self.assertEqual(self.show._get_module_at_pos(6).name, "#skip loop")
         self.assertEqual(self.show.count, 7)
@@ -178,8 +178,8 @@ class TestShowPlaylist(unittest.TestCase):
 
     def test_1320_append_video(self):
         commands=[
-            show.Command("jump to start chapter", "CommandDenon", "Track Jump", 1),
-            show.Command("swich video to BluRay", "CommandAtlona", "Set Output", 1, 2)]
+            show.CommandObject("jump to start chapter", "CommandDenon", "Track Jump", 1),
+            show.CommandObject("swich video to BluRay", "CommandAtlona", "Set Output", 1, 2)]
         self.assertEqual(self.show.count, 8)
         self.show.add_module_video("clip2_kite", "media/Big_Buck_Bunny_1080p_clip2.avi", pos=8, commands=commands)
         self.show.add_module_video("clip1_apple", "media/Big_Buck_Bunny_1080p_clip.mp4", pos=8)
@@ -194,7 +194,7 @@ class TestShowPlaylist(unittest.TestCase):
 
     def test_1401_add_command(self):
         self.assertEqual(self.show.count, 10)
-        command2 = show.Command("swich video to PC", "CommandAtlona", "Set Output", 1, 3)
+        command2 = show.CommandObject("swich video to PC", "CommandAtlona", "Set Output", 1, 3)
         self.show.add_command_to_pos(0, command2)
         self.assertEqual(len(self.show._get_module_at_pos(0).list_commands), 1)
 

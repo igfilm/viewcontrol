@@ -43,7 +43,7 @@ def create_session(project_folder):
     Session = sessionmaker(bind=some_engine)
     return Session()
 
-class Command(Base):
+class CommandObject(Base):
     """Command Database Object
 
     """
@@ -93,11 +93,11 @@ class Command(Base):
 
     def _update_db(self):
         #return
-        if not Command.session:
+        if not CommandObject.session:
             return
         if not self.id:
-            Command.session.add(self)
-        Command.session.commit()
+            CommandObject.session.add(self)
+        CommandObject.session.commit()
 
     def __repr__(self):
         return "{}|{}|{}|{}".format(self.name, self.device, self.name_cmd, self.get_args())
@@ -588,7 +588,7 @@ class SequenceModule(Base):
     logic_element = relationship("LogicElement", foreign_keys=[logic_element_id])
     media_element_id = Column(Integer, ForeignKey('mediaElement.id'))
     media_element = relationship("MediaElement", foreign_keys=[media_element_id])
-    list_commands = relationship("Command", back_populates="parent")
+    list_commands = relationship("CommandObject", back_populates="parent")
 
 
     def __init__(self, sequence_name, position, element=None, time=None, list_commands=[]):

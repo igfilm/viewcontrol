@@ -18,7 +18,7 @@ import functools
 import mpv
 
 import viewcontrol.show as show
-from viewcontrol.remotec.processcmd import ProcessCmd, ThreadCmd
+from viewcontrol.remotecontrol.processcmd import ProcessCmd, ThreadCmd
 from viewcontrol.playback.processmpv import ProcessMpv, ThreadMpv
 
 from viewcontrol.version import __version__ as package_version
@@ -46,11 +46,11 @@ class ViewControl(object):
             default=1, 
             type=int,
             help="screen number/id for media playback")
-        parser.add_argument('-m', '--modules', 
+        parser.add_argument('-d', '--devices', 
             action='store', 
             nargs='*', 
             default=None,
-            help="")
+            help="devices to communicate with, None starts all")
         parser.add_argument('--threading', 
             action='store_true',
             help='run programm only with threading intead of multiprocesing')
@@ -148,16 +148,16 @@ class ViewControl(object):
         self.sig_cmd_command = signal("cmd_command")
         self.sig_cmd_command.connect(self.send_command)
 
-        if not self.argpars_result.modules:
-            modules = ["CommandDenon", "CommandAtlona"]
+        if not self.argpars_result.devices:
+            devices = ["CommandDenon", "CommandAtlona"]
         else:
-            modules = self.argpars_result.modules
+            devices = self.argpars_result.devices
 
         if not self.argpars_result.threading:
             self.process_cmd = ProcessCmd(self.config_queue_logger, 
                     self.cmd_status_queue, 
                     self.cmd_controll_queue, 
-                    modules)
+                    devices)
             
             self.process_mpv = ProcessMpv(self.config_queue_logger,
                     self.mpv_status_queue, 
@@ -167,7 +167,7 @@ class ViewControl(object):
             self.process_cmd = ThreadCmd(self.logger, 
                 self.cmd_status_queue,
                 self.cmd_controll_queue,
-                modules)
+                devices)
             
             self.process_mpv = ThreadMpv(self.logger,
                     self.mpv_status_queue, 
