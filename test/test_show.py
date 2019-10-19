@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from viewcontrol import show
 
+
 class TestShow(unittest.TestCase):
 
     @classmethod
@@ -25,7 +26,64 @@ class TestShow(unittest.TestCase):
         return
 
     def setUp(self):
-        self.show = show.Show('testing', TestShow.project_folder)
+        self.show = show.Show(TestShow.project_folder)
+        
+    def test_1000_show(self):
+        self.assertEqual(len(self.show.show_display), 0)
+        self.show.show_new("testA")
+        #still 0 because no element was created
+        self.assertEqual(len(self.show.show_display), 0)
+        self.show.add_module_text("test1", "test1", 1)
+        self.assertEqual(len(self.show.show_display), 1)
+        self.assertEqual(self.show.show_display[0], "testA")
+
+    def test_1001_show(self):
+        self.assertEqual(self.show.show_display[0], "testA")
+        self.assertFalse(self.show.show_new("testA"))
+        self.assertFalse(self.show.show_load("testB"))
+        self.assertTrue(self.show.show_new("testB"))
+        self.show.add_module_text("test2", "test2", 2)
+        self.assertEqual(len(self.show.show_display), 2)
+        self.assertTrue(self.show.show_close())
+
+    def test_1002_show(self):
+        self.assertTrue(self.show.show_delete("testA"))
+        self.assertEqual(len(self.show.show_display), 1)
+        self.assertFalse(self.show.show_load("testA"))
+        self.assertEqual(self.show.show_display[0], "testB")
+        self.assertIsNone(self.show.name_show)
+        self.assertFalse(self.show.show_delete())
+        self.assertTrue(self.show.show_load("testB"))
+        self.assertTrue(self.show.show_delete())
+        self.assertEqual(len(self.show.show_display), 0)
+
+    def test_1003_show(self):
+        self.assertEqual(len(self.show.show_display), 0)
+        self.assertFalse(self.show.show_new("testA"))
+        self.assertEqual(len(self.show.show_display), 0)
+        self.assertFalse(self.show.show_new("testB"))
+        self.assertEqual(len(self.show.show_display), 0)
+        self.assertTrue(self.show.show_new("testC"))
+        self.show.add_module_text("test3", "test3", 3)
+        self.assertEqual(len(self.show.show_display), 1)
+
+
+class TestShowPlaylist(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.project_folder = os.path.expanduser("testing")
+        #if os.path.exists(cls.project_folder):
+        #    shutil.rmtree(cls.project_folder)
+
+    @classmethod
+    def tearDownClass(cls):
+        #shutil.rmtree(cls.project_folder)
+        return
+
+    def setUp(self):
+        self.show = show.Show(TestShowPlaylist.project_folder)
+        self.show.show_load("testing")
         print('')
         self.t_start = time.time()
 
@@ -39,6 +97,7 @@ class TestShow(unittest.TestCase):
 
     def test_1101_append_pdf_big(self):
         self.assertEqual(self.show.count, 0)
+        self.show.show_new("testing")
         #add pdf, check if files are created        
         self.show.add_module_still("poster", "media/bbb_poster.pdf", 8)
         self.assertTrue(os.path.exists(self.project_folder+'/bbb_poster_w.jpg'))

@@ -202,7 +202,7 @@ class ViewControl(object):
             project_folder=self.argpars_result.project_folder, 
             content_aspect_ratio=self.argpars_result.content_aspect_ratio)
 
-        self.logger.info("loaded Show: {}".format(self.playlist.sequence_name))
+        self.logger.info("loaded Show: {}".format(self.playlist.name_show))
 
         time.sleep(1)
 

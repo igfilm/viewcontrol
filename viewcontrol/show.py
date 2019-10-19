@@ -264,10 +264,10 @@ class MediaElement(Base):
     """
     __tablename__ = 'mediaElement'
     id = Column(Integer, primary_key=True, )
-    name = Column(String(50))
+    name = Column(String(20))
     file_path_w = Column(String(50))
     file_path_c = Column(String(50))
-    etype = Column(String(20))
+    etype = Column(String(10))
     project_path = None
     content_aspect_ratio = 'widescreen'
 
@@ -372,7 +372,7 @@ class VideoElement(MediaElement):
             cclip = ColorClip(size=(1920, 1080), color=(0, 0, 0), duration=video_clip.duration)
             video_clip = video_clip.fx(resize, height=810).set_position('center')
             result = CompositeVideoClip([cclip, video_clip])
-            result.write_videofile(path_dst,fps=video_clip.fps, codec='libx265')
+            result.write_videofile(path_dst,fps=video_clip.fps, codec='libx265', preset="superfast")
         else:
             copyfile(path_scr, path_dst)
         return video_clip.duration, content_aspect
@@ -582,6 +582,7 @@ class SequenceModule(Base):
     sequence_name = Column(String(20), nullable=True)
     position = Column(Integer)
     time = Column(Float)
+    deleted = Column(Boolean, default=False)
     #https://docs.sqlalchemy.org/en/13/orm/join_conditions.html
     logic_element_id = Column(Integer, ForeignKey('logicElement.id'))
     logic_element = relationship("LogicElement", foreign_keys=[logic_element_id])
@@ -610,7 +611,8 @@ class SequenceModule(Base):
             self.list_commands = [list_commands]
 
     def __repr__(self):
-        return "{}|{}|{}|".format(self.sequence_name, self.position, self.name)
+        return "|{:04d}|{:<20}|{:<20}|".format(self.position, self.name, self.sequence_name)
+
 
     @property
     def name(self):
@@ -682,30 +684,28 @@ class Show():
 
     """
     
-    def __init__(self, name, project_folder, content_aspect_ratio='c'):
+    def __init__(self, project_folder, content_aspect_ratio='c'):
         self.current_pos = 0
-        self.sequence_name = name
-        self.sequence = list()
-        self.session = create_session(project_folder)
-        MediaElement.set_project_path(project_folder)
+        self.name_show = None
+        self._sequence = list()
+        self.project_folder = os.path.expanduser(project_folder)
+        self.session = create_session(self.project_folder)
+        MediaElement.set_project_path(self.project_folder)
         MediaElement.set_content_aspect_ratio(content_aspect_ratio)
-        self._load_modules_from_db()
-        self._find_jumptotarget_elements()
-        self._happened_event_queue = queue.Queue()
         self._mm = MediaElementManager(self.session)
         self._lm = LogicElementManager(self.session)
 
     def _find_jumptotarget_elements(self):
         """find all jumptotarget_elements in playlist and set the property"""
         self.jumptotarget_elements = []
-        for e in self.sequence:
+        for e in self._sequence:
             if e.logic_element:
                 if isinstance(e.logic_element, JumpToTarget):
                     self.jumptotarget_elements.append(e)
 
     @property
     def playlist(self):
-        return sorted(self.sequence, key=lambda mod: mod.position)
+        return sorted(self._sequence, key=lambda mod: mod.position)
 
     @property
     def media_elements(self):
@@ -720,7 +720,7 @@ class Show():
         if obj.logic_element:
             if isinstance(obj.logic_element, LoopEnd):
                 if obj.logic_element.counter < obj.logic_element.cycles:
-                    for s in self.sequence:
+                    for s in self._sequence:
                         if isinstance(s.logic_element, LoopStart) \
                             and s.logic_element.key == obj.logic_element.key:
                             self.current_pos = s.position                  
@@ -728,28 +728,94 @@ class Show():
             
             return self.next()
         else:
-            return obj
+            if os.path.exists(obj.filepath):
+                return obj
+            else:
+                self.next()
+                return self.current_element
 
     @property
     def count(self):
         """number of modules in playlist"""
-        return len(self.sequence)
+        return len(self._sequence)
 
     def notify(self, name_event):
         """handles events send to show"""
         self._happened_event_queue.put(name_event)
 
-    def del_show(self):
+    ##### show methods #####
+
+    @property
+    def show_display(self):
+        return self._show_load_show_names()
+
+    def _show_load_show_names(self, deleted=False):
+        r =  self.session.query(SequenceModule.sequence_name)\
+            .filter(SequenceModule.deleted==deleted).distinct().all()
+        return [i[0] for i in r]
+
+    def show_new(self, name):
+        if name not in self.show_display:
+            self.show_close()
+            if name not in self._show_load_show_names(deleted=True):
+                self.name_show = name
+                return True
+            else:
+                return False  # error code: name in waste bin
+        else:
+            return False  # error code: name already exists
+
+    def show_load(self, name):
+        if name in self.show_display:
+            self.show_close()
+            self.name_show = name
+            self._load_modules_from_db()
+            self._find_jumptotarget_elements()
+            self._happened_event_queue = queue.Queue()
+            return True
+        else:
+            return False  # error code: name already exists
+
+    def show_close(self):
+        self._sequence = list()
+        self.show = None
+        return True
+
+    def show_delete(self, name=None):
         """delete show at database"""
-        raise NotImplementedError
+        if not name:
+            if not self.name_show:
+                return False  # error code: no show loaded and no name provided
+            del_name = self.name_show
+        else:
+            del_name = name
+
+        if del_name in self.show_display:
+            
+            to_delte = self.session.query(SequenceModule)\
+                .filter(SequenceModule.sequence_name==del_name).all()
+            for mod in to_delte:
+                mod.deleted = True
+            self.session.commit()
+
+            if not name:
+                self.show_close()
+            return True
+        else:
+            return False  # error code: name does not exist
         
+        
+    ##### module methods #####
+    
     def add_module(self, element, pos=None, time=None, commands=[]):
         """adds a module to playlist at given pos or at end when pos=None"""
+        if not self.name_show:
+            raise Exception("no show loaded")
         if isinstance(element, MediaElement):
             self._mm.add_element(element)
         else:
             self._lm.add_element(element)
-        sm = SequenceModule(self.sequence_name, len(self.sequence), 
+        sm = SequenceModule(self.name_show, len(self._sequence), 
             element=element, time=time, list_commands=commands)
         self._append_to_pos(sm, pos)
 
@@ -781,7 +847,7 @@ class Show():
         """apends a jump to target sequence module"""
         jttm = JumpToTarget(name, name_event)
         self.add_module(jttm, pos, commands=commands)
-        self.jumptotarget_elements.append(jttm)
+        self._find_jumptotarget_elements()
 
     def add_module_loop(self, cycles, pos=None):
         l_start, l_end = self._lm.create_elements_loop(cycles)
@@ -815,7 +881,7 @@ class Show():
 
     def _append_to_pos(self, element, pos=None):
         """append element at given position"""
-        self.sequence.append(element)
+        self._sequence.append(element)
         self.session.add(element)
         self.session.commit()
         if pos:
@@ -823,7 +889,7 @@ class Show():
 
     def _remove_module(self, element):
         self._change_position_end(element)
-        self.sequence.remove(element)
+        self._sequence.remove(element)
         self.session.delete(element)
         self.session.commit()
 
@@ -848,18 +914,18 @@ class Show():
 
     def _load_modules_from_db(self):
         """load show from database"""
-        self.sequence = self.session.query(SequenceModule).\
-            filter(SequenceModule.sequence_name==self.sequence_name).all()
+        self._sequence = self.session.query(SequenceModule).\
+            filter(SequenceModule.sequence_name==self.name_show).all()
 
     def _get_module_with_element_name(self, name):
-        for seqm in self.sequence:
+        for seqm in self._sequence:
             if seqm.name == name:
                 return seqm
         return None
 
     def _get_module_at_pos(self, position):
         """returns object on given playlist position"""
-        for s in self.sequence:
+        for s in self._sequence:
             if s.position == position:
                 return s
         raise Exception("Position '{}' does not exist.".format(position))
@@ -896,7 +962,7 @@ class Show():
                     self.current_pos = e.position
 
         #increase current position and return new current element
-        if self.current_pos < len(self.sequence)-1:
+        if self.current_pos < len(self._sequence)-1:
             self.current_pos = self.current_pos+1
             return self.current_element
         else:
