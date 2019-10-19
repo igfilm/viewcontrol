@@ -33,10 +33,14 @@ class ViewControl(object):
             epilog='fuubar')
         parser.add_argument('project_folder',
             help="folder path of project containing db-files and media-files")
+        parser.add_argument('--show', 
+            action='store',
+            dest='playlist_name',
+            help="inital show to load (usefull as long no GUI exists)")
         parser.add_argument('-r', '--content_aspect_ratio', 
             action='store', 
             choices=['c', 'cinescope', '21:9', 'w', 'widescreen', '16:9'],
-            help="sontent aspect ratio of movie played by BluRay-Player")
+            help="initial content aspect ratio of movie played by BluRay-Player")
         parser.add_argument('-s', '--screen', 
             action='store', 
             default=1, 
@@ -198,9 +202,10 @@ class ViewControl(object):
         for process in self.processeses:
             process.start()
 
-        self.playlist = show.Show('testing', 
+        self.playlist = show.Show(
             project_folder=self.argpars_result.project_folder, 
             content_aspect_ratio=self.argpars_result.content_aspect_ratio)
+        self.playlist.show_load(self.argpars_result.playlist_name)
 
         self.logger.info("loaded Show: {}".format(self.playlist.name_show))
 

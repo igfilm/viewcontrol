@@ -728,7 +728,7 @@ class Show():
             
             return self.next()
         else:
-            if os.path.exists(obj.filepath):
+            if os.path.exists(obj.media_element.file_path):
                 return obj
             else:
                 self.next()

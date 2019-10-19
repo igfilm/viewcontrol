@@ -66,6 +66,7 @@ class TestShow(unittest.TestCase):
         self.assertTrue(self.show.show_new("testC"))
         self.show.add_module_text("test3", "test3", 3)
         self.assertEqual(len(self.show.show_display), 1)
+        self.assertFalse(self.show.show_load(None))
 
 
 class TestShowPlaylist(unittest.TestCase):
