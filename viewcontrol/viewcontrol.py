@@ -207,12 +207,12 @@ class ViewControl(object):
             content_aspect_ratio=self.argpars_result.content_aspect_ratio)
         self.playlist.show_load(self.argpars_result.playlist_name)
 
-        self.logger.info("loaded Show: {}".format(self.playlist.name_show))
+        self.logger.info("loaded Show: {}".format(self.playlist._show_name))
 
         time.sleep(1)
 
         self.player_append_current_from_playlist()
-        for c in self.playlist.current_element.list_commands:
+        for c in self.playlist.module_current.list_commands:
             self.sig_cmd_command.send(c)
 
         while True:
@@ -220,7 +220,7 @@ class ViewControl(object):
             self.player_append_next_from_playlist()
             self.event_append.clear()
             self.event_next_happend.wait()
-            for c in self.playlist.current_element.list_commands:
+            for c in self.playlist.module_current.list_commands:
                 self.sig_cmd_command.send(c)
 
     def send_command(self, command_obj):
@@ -254,7 +254,7 @@ class ViewControl(object):
     
     def player_append_current_from_playlist(self):
         """Append current playlist element to player"""
-        self.player_append_element(self.playlist.current_element)
+        self.player_append_element(self.playlist.module_current)
 
     def player_append_element(self, element):
         """Append SequenceElement to player"""
