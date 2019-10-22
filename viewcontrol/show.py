@@ -181,7 +181,7 @@ class LogicElementManager:
 
     Attributes:
         session  (sqlalchemy.orm.Session): database session
-        elements     (Lits<MediaElemets>): list of active logic elemets
+        elements     (Lits<LogicElemets>): list of active logic elemets
 
     """
 
@@ -234,13 +234,13 @@ class LogicElementManager:
         return None
 
     def _elements_load_from_db(self):
-        self.elements.extend(self.session.query(MediaElement).all())    
+        self.elements.extend(self.session.query(LogicElement).all())    
 
     def _check_name_exists(self, name, num=1):
         """check if name already exists. If True, append a number if"""
         if num > 1:
             name='{}_{}'.format(name, num)
-        name_exists = self.session.query(MediaElement) \
+        name_exists = self.session.query(LogicElement) \
             .filter(LogicElement._name==name).first()
         if name_exists:
             name = self._check_name_exists(name, num=num+1)
@@ -660,7 +660,7 @@ class SequenceModule(Base):
         ForeignKey('mediaElement.id'), name="media_element_id")
     media_element = relationship("MediaElement", 
         foreign_keys=[_media_element_id])
-    _list_commands = relationship("Command", back_populates="_parent")
+    _list_commands = relationship("CommandObject", back_populates="_parent")
 
 
     def __init__(self, sequence_name, position, element=None, time=None, list_commands=[]):

@@ -159,7 +159,7 @@ class TestShowPlaylist(unittest.TestCase):
     def test_1305_append_jumpto(self):
         self.assertEqual(self.show.count, 6)
         self.assertTrue(self.show.module_add_jumptotarget("skip loop", "event_key_end", 
-            commands=show.Command(
+            commands=show.CommandObject(
                 "dimm light", "CommandDmx", "Group10-Intesity", 30)))
         self.assertEqual(self.show._module_get_at_pos(6).name, "#skip loop")
         self.assertEqual(self.show.count, 7)
@@ -208,8 +208,8 @@ class TestShowPlaylist(unittest.TestCase):
     def test_1401_add_command(self):
         self.assertEqual(self.show.count, 10)
         command2 = show.CommandObject("swich video to PC", "CommandAtlona", "Set Output", 1, 3)
-        self.show.add_command_to_pos(0, command2)
-        self.assertEqual(len(self.show._get_module_at_pos(0).list_commands), 1)
+        self.assertTrue(self.show.module_add_command_to_pos(0, command2))
+        self.assertEqual(len(self.show._module_get_at_pos(0).list_commands), 1)
 
     #TODO
     # test module_rename
