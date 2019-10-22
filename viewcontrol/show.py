@@ -29,29 +29,15 @@ from wand.drawing import Drawing
 
 Base = declarative_base()
 
-def create_project_databse(db_engine):
-    Base.metadata.create_all(db_engine, Base.metadata.tables.values(),checkfirst=True)
-
-def create_session(project_folder):
-    if not os.path.exists(project_folder):
-        if not os.path.exists(project_folder):
-            os.makedirs(project_folder)
-    db_file = os.path.join(project_folder, 'vcproject.db3')
-    engine = 'sqlite:///'+db_file
-    some_engine = create_engine(engine)
-    create_project_databse(some_engine)
-    Session = sessionmaker(bind=some_engine)
-    return Session()
-
-
 class Command(Base):
     """Command Database Object
 
     """
     __tablename__ = 'command'
     id = Column(Integer, primary_key=True)
-    parent_id = Column(Integer, ForeignKey('sequenceElements.id'))
-    parent = relationship("SequenceModule", back_populates="_list_commands")
+    _parent_id = Column(Integer, 
+        ForeignKey('sequenceElements.id'), name="parent_id")
+    _parent = relationship("SequenceModule", back_populates="_list_commands")
     name = Column(String(50))
     device = Column(String(50))
     name_cmd = Column(String(50))
@@ -59,12 +45,6 @@ class Command(Base):
     cmd_parameter2 = Column(String(10))
     cmd_parameter3 = Column(String(10))
     delay = Column(Integer)
-    session = None
-    #can be extendet with expected values to check for errors
-    
-    @classmethod
-    def set_session(cls, session):
-        cls.session = session
 
     def __init__(self, name, device, name_cmd, *args, delay=0):
         self.name = name
@@ -72,13 +52,13 @@ class Command(Base):
         self.device = device
         self.delay = delay
         self.set_parameters(*args)
-        self._update_db()
 
     def get_args(self):
         if not self.cmd_parameter1:
             return ()
         elif self.cmd_parameter3:
-            return (int(self.cmd_parameter1), int(self.cmd_parameter2), int(self.cmd_parameter3))
+            return (int(self.cmd_parameter1), int(self.cmd_parameter2), 
+                int(self.cmd_parameter3))
         elif self.cmd_parameter2:
             return (int(self.cmd_parameter1), int(self.cmd_parameter2))
         else:  # self.cmd_parameter1
@@ -92,16 +72,9 @@ class Command(Base):
         if len(args) > 2:
             self.cmd_parameter3 = args[2]
 
-    def _update_db(self):
-        #return
-        if not Command.session:
-            return
-        if not self.id:
-            Command.session.add(self)
-        Command.session.commit()
-
     def __repr__(self):
-        return "{}|{}|{}|{}".format(self.name, self.device, self.name_cmd, self.get_args())
+        return "{}|{}|{}|{}".format(
+            self.name, self.device, self.name_cmd, self.get_args())
 
 
 class LogicElement(Base):
@@ -244,7 +217,8 @@ class LogicElementManager:
         """make a pair of loop elements 
         which will be added to the list via add_element by the calling function
         """
-        raw_key = self.session.query(LoopStart._key).order_by(desc(LoopStart._key)).first()
+        raw_key = self.session.query(LoopStart._key) \
+            .order_by(desc(LoopStart._key)).first()
         if not raw_key:
             key = 1
         else:
@@ -263,9 +237,11 @@ class LogicElementManager:
         self.elements.extend(self.session.query(MediaElement).all())    
 
     def _check_name_exists(self, name, num=1):
+        """check if name already exists. If True, append a number if"""
         if num > 1:
             name='{}_{}'.format(name, num)
-        name_exists = self.session.query(MediaElement).filter(LogicElement._name==name).first()
+        name_exists = self.session.query(MediaElement) \
+            .filter(LogicElement._name==name).first()
         if name_exists:
             name = self._check_name_exists(name, num=num+1)
         return name
@@ -395,7 +371,8 @@ class VideoElement(MediaElement):
 
     def __init__(self, name, file_path, t_start=0, t_end=None):
         
-        adst_c, rdst_c = MediaElement._create_abs_filepath(file_path, "_c", ".mp4")
+        adst_c, rdst_c = \
+            MediaElement._create_abs_filepath(file_path, "_c", ".mp4")
         dur, car = self._insert_video(file_path, adst_c, 
             cinescope=True, 
             t_start=t_start, 
@@ -406,7 +383,8 @@ class VideoElement(MediaElement):
             adst_w = adst_c
             rdst_w = rdst_c
         else:
-            adst_w, rdst_w = MediaElement._create_abs_filepath(file_path, "_w", ".mp4")
+            adst_w, rdst_w = \
+                MediaElement._create_abs_filepath(file_path, "_w", ".mp4")
             self._insert_video(file_path, adst_w, 
                 content_aspect=content_aspect_ratio, 
                 cinescope=False, 
@@ -418,7 +396,14 @@ class VideoElement(MediaElement):
     def duration(self):
         return self._duration
 
-    def _insert_video(self, path_scr, path_dst, content_aspect=None, cinescope=True, t_start=0, t_end=None):
+    def _insert_video(self, 
+            path_scr, 
+            path_dst, 
+            content_aspect=None, 
+            cinescope=True, 
+            t_start=0, 
+            t_end=None):
+        """convert source file and save it in project directory"""
         video_clip = VideoFileClip(path_scr).subclip(t_start=t_start, t_end=t_end)
         if cinescope:            
             content_aspect = VideoElement._get_video_content_aspect_ratio(video_clip)
@@ -436,6 +421,7 @@ class VideoElement(MediaElement):
 
     @staticmethod
     def _get_video_content_aspect_ratio(video_file_clip):
+        """anyalyse video for the aspect ratio of its content"""
         vfc = video_file_clip
         samples=5
         sample_time_step = video_file_clip.duration/samples
@@ -485,6 +471,7 @@ class TextElement(MediaElement):
 
     @staticmethod
     def _make_text_image(text, save_path):
+        """create image with given text and save in project folder"""
         with Drawing() as draw:
             with Image(width=1920, height=1080, background=Color("black")) as image:
                 #draw.font = 'wandtests/assets/League_Gothic.otf'
@@ -618,6 +605,7 @@ class MediaElementManager:
         return None
 
     def _check_name_exists(self, name, num=1):
+        """check if name already exists. If True, append a number if"""
         if num > 1:
             name='{}_{}'.format(name, num)
         name_exists = self._session.query(MediaElement).filter(MediaElement._name==name).first()
@@ -672,7 +660,7 @@ class SequenceModule(Base):
         ForeignKey('mediaElement.id'), name="media_element_id")
     media_element = relationship("MediaElement", 
         foreign_keys=[_media_element_id])
-    _list_commands = relationship("Command", back_populates="parent")
+    _list_commands = relationship("Command", back_populates="_parent")
 
 
     def __init__(self, sequence_name, position, element=None, time=None, list_commands=[]):
@@ -778,7 +766,7 @@ class Show():
     def __init__(self, project_folder, content_aspect_ratio='c'):
         self._show_name = None
         self._show_project_folder = os.path.expanduser(project_folder) 
-        self._session = create_session(self._show_project_folder)
+        self._session = Show.create_session(self._show_project_folder)
         MediaElement.set_project_path(self._show_project_folder)
         MediaElement.set_content_aspect_ratio(content_aspect_ratio)
         self._mm = MediaElementManager(self._session)
@@ -1091,3 +1079,17 @@ class Show():
             return self.module_current
         else:
             return SequenceModule.viewcontroll_placeholder()
+
+    @staticmethod
+    def create_session(project_folder):
+        """create a session and the db-file if not exist"""
+        if not os.path.exists(project_folder):
+            if not os.path.exists(project_folder):
+                os.makedirs(project_folder)
+        db_file = os.path.join(project_folder, 'vcproject.db3')
+        engine = 'sqlite:///'+db_file
+        some_engine = create_engine(engine)
+        Base.metadata.create_all(some_engine, 
+            Base.metadata.tables.values(),checkfirst=True)
+        Session = sessionmaker(bind=some_engine)
+        return Session()
