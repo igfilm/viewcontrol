@@ -159,7 +159,7 @@ class TestShowPlaylist(unittest.TestCase):
     def test_1305_append_jumpto(self):
         self.assertEqual(self.show.count, 6)
         self.assertTrue(self.show.module_add_jumptotarget("skip loop", "event_key_end", 
-            commands=show.Command(
+            commands=show.CommandObject(
                 "dimm light", "CommandDmx", "Group10-Intesity", 30)))
         self.assertEqual(self.show._module_get_at_pos(6).name, "#skip loop")
         self.assertEqual(self.show.count, 7)
@@ -190,11 +190,8 @@ class TestShowPlaylist(unittest.TestCase):
         self.assertEqual(self.show._module_get_at_pos(7).media_element.text, "next at viewcontrol")
 
     def test_1320_append_video(self):
-        commands=[
-            show.Command("jump to start chapter", "CommandDenon", "Track Jump", 1),
-            show.Command("swich video to BluRay", "CommandAtlona", "Set Output", 1, 2)]
         self.assertEqual(self.show.count, 8)
-        self.assertTrue(self.show.module_add_video("clip2_kite", "media/Big_Buck_Bunny_1080p_clip2.avi", t_start=0.1, pos=8, commands=commands))
+        self.assertTrue(self.show.module_add_video("clip2_kite", "media/Big_Buck_Bunny_1080p_clip2.avi", t_start=0.1, pos=8))
         self.assertTrue(self.show.module_add_video("clip1_apple", "media/Big_Buck_Bunny_1080p_clip.mp4", pos=8))
         self.assertTrue(os.path.exists(self.project_folder+'/Big_Buck_Bunny_1080p_clip2_c.mp4'))
         self.assertTrue(os.path.exists(self.project_folder+'/Big_Buck_Bunny_1080p_clip2_w.mp4'))
@@ -202,17 +199,20 @@ class TestShowPlaylist(unittest.TestCase):
         self.assertTrue(os.path.exists(self.project_folder+'/Big_Buck_Bunny_1080p_clip_w.mp4'))
         self.assertEqual(self.show._module_get_with_name("clip2_kite").position, 9)
         self.assertEqual(self.show._module_get_with_name("clip1_apple").position, 8)
-        self.assertEqual(len(self.show._module_get_with_name("clip2_kite").list_commands), 2)
         self.assertEqual(self.show.count, 10)
 
     def test_1401_add_command(self):
         self.assertEqual(self.show.count, 10)
-        command2 = show.Command("swich video to PC", "CommandAtlona", "Set Output", 1, 3)
+        commands=[
+            show.CommandObject("jump to start chapter", "CommandDenon", "Track Jump", 1),
+            show.CommandObject("swich video to BluRay", "CommandAtlona", "Set Output", 2, 1)]
+        self.assertTrue(self.show.module_add_text("film ab", "FILM AB", 1, commands=commands))
+        self.assertEqual(self.show.count, 11)
+        self.assertEqual(len(self.show._module_get_at_pos(10).list_commands), 2)
+        command2 = show.CommandObject("swich video to PC", "CommandAtlona", "Set Output", 3, 1)
         self.assertTrue(self.show.module_add_command_to_pos(0, command2))
         self.assertEqual(len(self.show._module_get_at_pos(0).list_commands), 1)
 
-    #TODO
-    # test module_rename
 
 if __name__ == '__main__':
     unittest.main(failfast=True)

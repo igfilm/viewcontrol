@@ -1,6 +1,6 @@
 #List of Commands for the Atlona AT-OMW-SW32
 
-- !CommandAtlona
+- !AtlonaATOMESW32
   name: InputStatus
   description: Displays the status for each input.
   string_requ: 'InputStatus'
@@ -8,7 +8,7 @@
   parser_recv: 'InputStatus (\d)(\d)(\d)'
   dict_mapping: null
 
-- !CommandAtlona
+- !AtlonaATOMESW32
   name: Status
   description: Displays the current route status.
   string_requ: 'Status'
@@ -16,7 +16,7 @@
   parser_recv: 'x(\d)AVx1,x(\d)AVx2'
   dict_mapping: null
 
-- !CommandAtlona
+- !AtlonaATOMESW32
   name: Set Output
   description: "Switch audio and video input to output. 0:Input 1:Output"
   string_requ: null
@@ -24,7 +24,7 @@
   parser_recv: 'x(\d)AVx(\d)'
   dict_mapping: null
 
-- !CommandAtlona
+- !AtlonaATOMESW32
   name: Lock
   description: "Locks the front panel of the matrix so no buttons are active."
   string_requ: null
@@ -32,7 +32,7 @@
   parser_recv: 'Lock'
   dict_mapping: null
 
-- !CommandAtlona
+- !AtlonaATOMESW32
   name: Unlock
   description: "Unlocks the front panel of the matrix, enabling the buttons again."
   string_requ: null
@@ -40,7 +40,7 @@
   parser_recv: 'Unlock'
   dict_mapping: null
 
-- !CommandAtlona
+- !AtlonaATOMESW32
   name: PWSTA
   description: "Displays the power status of the matrix."
   string_requ: 'PWSTA'
@@ -48,7 +48,7 @@
   parser_recv: '((?:PWON)|(?:PWOFF))'
   dict_mapping: null    
 
-- !CommandAtlona
+- !AtlonaATOMESW32
   name: PWON
   description: "Turns the unit on. Front panel LED will illuminate blue when on."
   string_requ: null
@@ -56,7 +56,7 @@
   parser_recv: 'PWON'
   dict_mapping: null
 
-- !CommandAtlona
+- !AtlonaATOMESW32
   name: PWOFF
   description: "Turns the unit off. Front panel LED will illuminate red when off."
   string_requ: null
@@ -64,7 +64,7 @@
   parser_recv: 'PWOFF'
   dict_mapping: null
 
-- !CommandAtlona
+- !AtlonaATOMESW32
   name: CommaWait
   description: "Enable/Disable a comma adding a 5 second delay between commands. Default is on."
   string_requ: null
@@ -75,7 +75,7 @@
     'off': 'off'
     'sta': 'standart'
 
-- !CommandAtlona
+- !AtlonaATOMESW32
   name: Blink
   description: "Enable/Disable blinking of the front panel POWER LED"
   string_requ: null
@@ -86,7 +86,7 @@
     'off': 'off'
     'sta': 'standart'
 
-- !CommandAtlona
+- !AtlonaATOMESW32
   name: DispBtn
   description: "Sets the command triggered through display control (set in the webGUI)"
   string_requ: null
@@ -98,7 +98,7 @@
     'sta': 'standart'
     'tog': 'toogle'
 
-- !CommandAtlona
+- !AtlonaATOMESW32
     name: System sta
     description: "Displays the current device information such as model number, IP, firmware, hostname, etc."
     string_requ: null
