@@ -149,7 +149,7 @@ class ViewControl(object):
         self.sig_cmd_command.connect(self.send_command)
 
         if not self.argpars_result.devices:
-            devices = ["CommandDenon", "CommandAtlona"]
+            devices = ["DenonDN500BD", "AtlonaATOMESW32"]
         else:
             devices = self.argpars_result.devices
 

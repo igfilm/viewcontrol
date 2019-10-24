@@ -52,8 +52,9 @@ class ThreadCommunication(ThreadCommunicationBase):
                         and not self.echo_recived \
                         and not self.q_send.empty():
                     val = self.q_send.get()
-                    self.logger.info("Send: {0:<78}R{0}".format(str(val.encode())))
-                    self.last_send_data = val.encode()
+                    str_send = self.compose(val)
+                    self.logger.info("Send: {0:<78}R{0}".format(str_send))
+                    self.last_send_data = str_send.encode()
                     tn.write(self.last_send_data)
                     last_send_time = time_tmp
 
@@ -73,12 +74,12 @@ class ThreadCommunication(ThreadCommunicationBase):
             else:
                 args = cmd_obj.get_args()
                 if args:
-                    str_send = dict_obj.send_command(*args)
+                    str_send = dict_obj.get_send_command(*args)
                 else:
                     if dict_obj.string_requ:
-                        str_send = dict_obj.send_request()
+                        str_send = dict_obj.get_send_request()
                     else:
-                        str_send = dict_obj.send_command() 
+                        str_send = dict_obj.get_send_command() 
             return str_send   
 
     def interpret(self, val, sock):
@@ -89,14 +90,15 @@ class AtlonaATOMESW32(ThreadCommunication):
 
     def __init__(self, target_ip, target_port):
         super().__init__("AtlonaATOMESW32", target_ip, target_port)
+        self.echo_recived = False
 
     def interpret(self, str_recv, tn):
         #check if recived massage is valid         
         if(str_recv and str_recv.endswith(b'\r\n')):
             #if its equal the send message its the echo sen by client
             #therefore continue and recive the wanted answer                    
-            if not echo_recived and self.last_send_data in str_recv:
-                echo_recived = True
+            if not self.echo_recived and self.last_send_data in str_recv:
+                self.echo_recived = True
                 return
 
             #decode mesage and find the corresponding entyr in the
@@ -109,7 +111,7 @@ class AtlonaATOMESW32(ThreadCommunication):
 
             #if an echo was recived a command was send before,
             #else a status message was send from the client
-            if echo_recived:
+            if self.echo_recived:
                 #if command failed
                 if re.search(ci.AtlonaATOMESW32.error_seq, str_recv):
                     self.logger.info("Echo: {}".format(str_recv))
@@ -117,7 +119,7 @@ class AtlonaATOMESW32(ThreadCommunication):
                 else:
                     self.logger.info("Echo: {0:<30} --> {1:<43}E{0}".format(str(str_recv), str(value)))
                     self.put_q_recv(str_recv)
-                echo_recived=False
+                self.echo_recived=False
             else:
                 self.logger.info("Stat: {0:<30} --> {1:<43}S{0}".format(str(str_recv), str(value)))
                 self.put_q_stat(str_recv)

@@ -72,11 +72,10 @@ class CommandProcess:
             self.listeners = list()
             
             #TODO make this more dynamic
-            if 'CommandDenon' in self.devices:
+            if 'DenonDN500BD' in self.devices:
                 self.listeners.append(tcpip.DenonDN500BD("192.168.178.201", 9030))
-            if 'CommandAtlona' in self.devices:
+            if 'AtlonaATOMESW32' in self.devices:
                 self.listeners.append(telnet.AtlonaATOMESW32("192.168.178.202", 23))
-
 
             for l in self.listeners:
                 l.start()
@@ -98,10 +97,10 @@ class CommandProcess:
                     continue
 
                 #maybe automate by cheking all regigisstered event names
-                if cmd_obj.device == "CommandDenon":
+                if cmd_obj.device == "DenonDN500BD":
                     signal("DenonDN500BD_send").send(cmd_obj)
-                if cmd_obj.device == "CommandAtlona":
-                    signal("DenonDN500BD_send").send(cmd_obj)
+                if cmd_obj.device == "AtlonaATOMESW32":
+                    signal("AtlonaATOMESW32_send").send(cmd_obj)
 
         except Exception as e:
                 try:

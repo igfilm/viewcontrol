@@ -190,6 +190,6 @@ class DictCommandItemLib(dict):
         """
         key = self.get_command_from_answer(str_answ)
         if key:
-            return (key, self.get(key).recv_parser(str_answ))
+            return (key, self.get(key).get_recv_parser(str_answ))
         else:
             return "command not found"

@@ -63,16 +63,19 @@ class ThreadCommunication(ThreadCommunicationBase):
             if not dict_obj:
                 self.logger.warning("Command '{}' not found in dict_deneon!"
                     .format(cmd_obj.name_cmd))
+                str_send = cmd_obj.name_cmd
             else:
                 args = cmd_obj.get_args()
                 if args:
-                    str_send = dict_obj.send_command(*args)
+                    str_send = dict_obj.get_send_command(*args)
                 else:
                     if dict_obj.string_requ:
-                        str_send = dict_obj.send_request()
+                        str_send = dict_obj.get_send_request()
                     else:
-                        str_send = dict_obj.send_command() 
-            return str_send   
+                        str_send = dict_obj.get_send_command() 
+            return str_send
+        else:
+            self.logger.error("Command not Found")
 
     def interpret(self, val, sock):
         return val
