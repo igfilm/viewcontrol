@@ -17,6 +17,7 @@ class TestShow(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.project_folder = os.path.expanduser("testing")
+        show.MediaElement._skip_high_workload_functions = True
         if os.path.exists(cls.project_folder):
             shutil.rmtree(cls.project_folder)
 
@@ -68,12 +69,20 @@ class TestShow(unittest.TestCase):
         self.assertEqual(len(self.show.show_list), 1)
         self.assertFalse(self.show.show_load(None))
 
+    def test_1004_show_copy(self):
+        self.assertEqual(len(self.show.show_list), 1)
+        self.assertTrue(self.show.show_copy("testC", "testC_copy"))
+        self.assertEqual(len(self.show.show_list), 2)
+        self.assertTrue(self.show.show_load("testC_copy"))
+        self.assertEqual(self.show.count, 1)
+        self.assertEqual(self.show._module_get_at_pos(0)._media_element_id, 3)
 
 class TestShowPlaylist(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
         cls.project_folder = os.path.expanduser("testing")
+        show.MediaElement._skip_high_workload_functions = True
         #if os.path.exists(cls.project_folder):
         #    shutil.rmtree(cls.project_folder)
 
@@ -204,14 +213,27 @@ class TestShowPlaylist(unittest.TestCase):
     def test_1401_add_command(self):
         self.assertEqual(self.show.count, 10)
         commands=[
-            show.CommandObject("jump to start chapter", "CommandDenon", "Track Jump", 1),
-            show.CommandObject("swich video to BluRay", "CommandAtlona", "Set Output", 2, 1)]
+            show.CommandObject("jump to start chapter", "CommandDenon", "Track Jump", 1, delay=1),
+            show.CommandObject("swich video to BluRay", "CommandAtlona", "Set Output", 2, 1, delay=2)]
         self.assertTrue(self.show.module_add_text("film ab", "FILM AB", 1, commands=commands))
         self.assertEqual(self.show.count, 11)
         self.assertEqual(len(self.show._module_get_at_pos(10).list_commands), 2)
-        command2 = show.CommandObject("swich video to PC", "CommandAtlona", "Set Output", 3, 1)
+        command2 = show.CommandObject("swich video to PC", "CommandAtlona", "Set Output", 3, 1, delay=3)
         self.assertTrue(self.show.module_add_command_to_pos(0, command2))
         self.assertEqual(len(self.show._module_get_at_pos(0).list_commands), 1)
+
+    def test_1500_copy_module(self):
+        self.assertEqual(len(self.show._module_get_at_pos(0).list_commands), 1)
+        self.assertTrue(self.show.module_copy(10))
+        self.assertEqual(self.show.count, 12)
+        self.assertEqual(len(self.show._module_get_at_pos(11).list_commands), 2)
+
+    def test_2001_copy_show(self):
+        self.assertEqual(len(self.show._module_get_at_pos(11).list_commands), 2)
+        self.assertTrue(self.show.show_copy(None, "testing_copy"))
+        self.assertTrue(self.show.show_load("testing_copy"))
+        self.assertEqual(self.show.count, 12)
+
 
 
 if __name__ == '__main__':
