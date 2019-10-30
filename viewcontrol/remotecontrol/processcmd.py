@@ -81,26 +81,26 @@ class CommandProcess:
                 l.start()
 
             while True:
-                cmd_obj = self.queue_comand.get(block=True)
+                cmd_tpl = self.queue_comand.get(block=True)
                 self.logger.info("~~> recived data: '{}':'{}'"
-                    .format(type(cmd_obj), str(cmd_obj)))
-                if isinstance(cmd_obj, CommandObject):
+                    .format(type(cmd_tpl), str(cmd_tpl)))
+                if isinstance(cmd_tpl, CommandObject):
                     pass
-                elif isinstance(cmd_obj, str):
+                elif isinstance(cmd_tpl, str):
                     # implemnt pausing and handling of delayed commands
-                    if cmd_obj == "pause":
+                    if cmd_tpl == "pause":
                         pass
-                    elif cmd_obj == "resume":
+                    elif cmd_tpl == "resume":
                         pass
-                    elif cmd_obj == "next":
+                    elif cmd_tpl == "next":
                         pass
                     continue
 
                 #maybe automate by cheking all regigisstered event names
-                if cmd_obj.device == "DenonDN500BD":
-                    signal("DenonDN500BD_send").send(cmd_obj)
-                if cmd_obj.device == "AtlonaATOMESW32":
-                    signal("AtlonaATOMESW32_send").send(cmd_obj)
+                if cmd_tpl[0].device == "DenonDN500BD":
+                    signal("DenonDN500BD_send").send(cmd_tpl[0])
+                if cmd_tpl[0].device == "AtlonaATOMESW32":
+                    signal("AtlonaATOMESW32_send").send(cmd_tpl[0])
 
         except Exception as e:
                 try:

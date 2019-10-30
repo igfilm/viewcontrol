@@ -82,7 +82,7 @@ class TestShowPlaylist(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.project_folder = os.path.expanduser("testing")
-        show.MediaElement._skip_high_workload_functions = True
+        show.MediaElement._skip_high_workload_functions = False
         #if os.path.exists(cls.project_folder):
         #    shutil.rmtree(cls.project_folder)
 
@@ -168,8 +168,8 @@ class TestShowPlaylist(unittest.TestCase):
     def test_1305_append_jumpto(self):
         self.assertEqual(self.show.count, 6)
         self.assertTrue(self.show.module_add_jumptotarget("skip loop", "event_key_end", 
-            commands=show.CommandObject(
-                "dimm light", "CommandDmx", "Group10-Intesity", 30)))
+            commands_delay_tuple=(show.CommandObject(
+                "dimm light", "CommandDmx", "Group10-Intesity"), 30)))
         self.assertEqual(self.show._module_get_at_pos(6).name, "#skip loop")
         self.assertEqual(self.show.count, 7)
 
@@ -213,12 +213,12 @@ class TestShowPlaylist(unittest.TestCase):
     def test_1401_add_command(self):
         self.assertEqual(self.show.count, 10)
         commands=[
-            show.CommandObject("jump to start chapter", "CommandDenon", "Track Jump", 1, delay=1),
-            show.CommandObject("swich video to BluRay", "CommandAtlona", "Set Output", 2, 1, delay=2)]
-        self.assertTrue(self.show.module_add_text("film ab", "FILM AB", 1, commands=commands))
+            (show.CommandObject("jump to start chapter", "DenonDN500BD", "Track Jump", 1), 1),
+            (show.CommandObject("swich video to BluRay", "AtlonaATOMESW32", "Set Output", 2, 1), 2)]
+        self.assertTrue(self.show.module_add_text("film ab", "FILM AB", 1, commands_delay_tuple=commands))
         self.assertEqual(self.show.count, 11)
         self.assertEqual(len(self.show._module_get_at_pos(10).list_commands), 2)
-        command2 = show.CommandObject("swich video to PC", "CommandAtlona", "Set Output", 3, 1, delay=3)
+        command2 = (show.CommandObject("swich video to PC", "AtlonaATOMESW32", "Set Output", 3, 1), 3)
         self.assertTrue(self.show.module_add_command_to_pos(0, command2))
         self.assertEqual(len(self.show._module_get_at_pos(0).list_commands), 1)
 
@@ -233,6 +233,10 @@ class TestShowPlaylist(unittest.TestCase):
         self.assertTrue(self.show.show_copy(None, "testing_copy"))
         self.assertTrue(self.show.show_load("testing_copy"))
         self.assertEqual(self.show.count, 12)
+
+    def test_2010_change_command(self):
+        pass
+
 
 
 
