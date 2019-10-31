@@ -1,21 +1,13 @@
-import yaml
-import os
-import time
-import datetime
-from copy import deepcopy as dc
+import abc
 from numpy import array, arange
-import math
+import os
 from shutil import copyfile
 import queue
 
+import sqlalchemy
 from sqlalchemy import orm
-from sqlalchemy import Column, Integer, String, Boolean, Time, ForeignKey, Float
-from sqlalchemy.orm import relationship
+from sqlalchemy import Column, Integer, String, Boolean, Time, ForeignKey, Float, Table
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import desc
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.orm import joinedload, selectinload
 
 from moviepy.video.io.VideoFileClip import VideoFileClip
 from moviepy.video.VideoClip import ColorClip
@@ -29,52 +21,80 @@ from wand.drawing import Drawing
 
 Base = declarative_base()
 
-class CommandObject(Base):
-    """Command Database Object
+
+class ManagerBase(abc.ABC):
+    """Manager basse class for all managers at runtime and in database.
+
+    Args:
+        session (sqlalchemy.orm.Session): database session
+
+    Attributes:
+        session  (sqlalchemy.orm.Session): database session
+        elements     (Lits<MediaElemets>): list of active media elemets
 
     """
-    __tablename__ = 'command'
-    id = Column(Integer, primary_key=True)
-    _parent_id = Column(Integer, 
-        ForeignKey('sequenceElements.id'), name="parent_id")
-    _parent = relationship("SequenceModule", back_populates="_list_commands")
-    name = Column(String(50))
-    device = Column(String(50))
-    name_cmd = Column(String(50))
-    cmd_parameter1 = Column(String(10))
-    cmd_parameter2 = Column(String(10))
-    cmd_parameter3 = Column(String(10))
-    delay = Column(Integer)
 
-    def __init__(self, name, device, name_cmd, *args, delay=0):
-        self.name = name
-        self.name_cmd = name_cmd
-        self.device = device
-        self.delay = delay
-        self.set_parameters(*args)
+    def __init__(self, session):
+        self._session = session
+        self._elements = []
+        self._elements_load_from_db()
 
-    def get_args(self):
-        if not self.cmd_parameter1:
-            return ()
-        elif self.cmd_parameter3:
-            return (int(self.cmd_parameter1), int(self.cmd_parameter2), 
-                int(self.cmd_parameter3))
-        elif self.cmd_parameter2:
-            return (int(self.cmd_parameter1), int(self.cmd_parameter2))
-        else:  # self.cmd_parameter1
-            return (int(self.cmd_parameter1),)
+    @property
+    def session(self):
+        return self._session
 
-    def set_parameters(self, *args):
-        if len(args) > 0:
-            self.cmd_parameter1 = args[0]
-        if len(args) > 1:
-            self.cmd_parameter2 = args[1]
-        if len(args) > 2:
-            self.cmd_parameter3 = args[2]
+    @property
+    def elements(self):
+        return self._elements
 
-    def __repr__(self):
-        return "{}|{}|{}|{}".format(
-            self.name, self.device, self.name_cmd, self.get_args())
+    def element_add(self, element):
+        """add media element to database, if name alreadey exists append number
+        to the name
+        """
+        element.name = self._check_name_exists(element.name)
+        self._elements.append(element)
+        self._session.add(element)
+        self._session.commit()
+        return True
+
+    def element_delete(self, element):
+        return False
+
+    def element_rename(self, element, new_name, commit=True):
+        element.name = self._check_name_exists(new_name)
+        if commit:
+            self._session.commit()
+        return True
+
+    def element_get_with_name(self, name):
+        for e in self._elements:
+            if e.name==name:
+                return e
+        return None
+
+    def _check_name_exists(self, name, num=1):
+        """check if name already exists. If True, append a number if"""
+        if num > 1:
+            name='{}_{}'.format(name, num)
+        name_exists = self._elements_get_with_name_from_db(name)
+        if name_exists:
+            name = self._check_name_exists(name, num=num+1)
+        return name
+
+    def _elements_load_from_db(self):
+        self.elements.extend(self._elements_get_all_from_db())
+
+    @abc.abstractmethod
+    def _elements_get_with_name_from_db(self, name):
+        pass
+
+    @abc.abstractmethod
+    def _elements_get_by_id_from_db(self, id):
+        pass
+
+    @abc.abstractmethod
+    def _elements_get_all_from_db(self):
+        pass
 
 
 class LogicElement(Base):
@@ -92,7 +112,7 @@ class LogicElement(Base):
 
     """
     __tablename__ = 'logicElement'
-    id = Column(Integer, primary_key=True)
+    _id = Column(Integer, primary_key=True, name="id")
     _name = Column(String(50), name="name", unique=True)
     _key = Column(Integer, name="key")
     _etype = Column(String(20), name="etype")
@@ -107,6 +127,10 @@ class LogicElement(Base):
         self._key = key
 
     @property
+    def id(self):
+        return self._id
+
+    @property
     def name(self):
         return self._name
 
@@ -119,6 +143,9 @@ class LogicElement(Base):
     @property
     def key(self):
         return self._key
+
+    def __repr__(self):
+        return "{:04d}|{}|{}".format(self.id, type(self), self.name)
 
 
 class LoopStart(LogicElement):
@@ -173,7 +200,7 @@ class JumpToTarget(LogicElement):
         return self._name_event
 
 
-class LogicElementManager:
+class LogicElementManager(ManagerBase):
     """Manager for all lofic elemets at runtime and in database.
 
     Args:
@@ -185,40 +212,23 @@ class LogicElementManager:
 
     """
 
-    def __init__(self, session):
-        self._session = session
-        self._elements = []
-        self._elements_load_from_db()
+    def _elements_get_with_name_from_db(self, name):
+        return self.session.query(LogicElement) \
+            .filter(LogicElement._name==name).first()
 
-    @property
-    def session(self):
-        return self._session
+    def _elements_get_by_id_from_db(self, id):
+        return self._session.query(LogicElement)\
+            .filter(LogicElement._id==id).first()
 
-    @property
-    def elements(self):
-        return self._elements
-
-    def element_add(self, element, num=1):
-        element.name = self._check_name_exists(element.name)
-        self._elements.append(element)
-        self.session.add(element)
-        self.session.commit()
-        return True
-
-    def element_delete(self, element):
-        return False
-
-    def element_rename(self, element, new_name):
-        element.name = self._check_name_exists(new_name)
-        self._session.commit()
-        return True
+    def _elements_get_all_from_db(self):
+        return self.session.query(LogicElement).all()
 
     def element_make_loop_pair(self, cycles):
         """make a pair of loop elements 
         which will be added to the list via add_element by the calling function
         """
         raw_key = self.session.query(LoopStart._key) \
-            .order_by(desc(LoopStart._key)).first()
+            .order_by(sqlalchemy.desc(LoopStart._key)).first()
         if not raw_key:
             key = 1
         else:
@@ -226,25 +236,6 @@ class LogicElementManager:
         loop_start = LoopStart("LoopStart_{}".format(key), key)
         loop_end = LoopEnd("LoopEnd_{}".format(key), key, cycles)
         return loop_start, loop_end
-
-    def element_get_with_name(self, name):
-        for e in self.elements:
-            if e.name==name:
-                return e
-        return None
-
-    def _elements_load_from_db(self):
-        self.elements.extend(self.session.query(LogicElement).all())    
-
-    def _check_name_exists(self, name, num=1):
-        """check if name already exists. If True, append a number if"""
-        if num > 1:
-            name='{}_{}'.format(name, num)
-        name_exists = self.session.query(LogicElement) \
-            .filter(LogicElement._name==name).first()
-        if name_exists:
-            name = self._check_name_exists(name, num=num+1)
-        return name
 
 
 class MediaElement(Base):
@@ -280,10 +271,10 @@ class MediaElement(Base):
 
     """
     __tablename__ = 'mediaElement'
-    id = Column(Integer, primary_key=True, )
+    _id = Column(Integer, primary_key=True, name="id")
     _name = Column(String(20), name ="name", unique=True)
-    _file_path_w = Column(String(200), name="file_path_w", unique=True)
-    _file_path_c = Column(String(200), name="file_path_c", unique=True)
+    _file_path_w = Column(String(200), name="file_path_w")
+    _file_path_c = Column(String(200), name="file_path_c")
     _etype = Column(String(10), name="etype")
 
     __mapper_args__ = {
@@ -293,6 +284,8 @@ class MediaElement(Base):
 
     project_path = None
     content_aspect_ratio = 'widescreen'
+    # for debuging only
+    _skip_high_workload_functions = False
 
     @classmethod
     def set_project_path(cls, path):
@@ -327,12 +320,9 @@ class MediaElement(Base):
                 os.path.relpath(target_file, start=MediaElement.project_path)  
 
     @property
-    def file_path(self):
-        if MediaElement.content_aspect_ratio == 'widescreen':
-            return os.path.join(MediaElement.project_path, self._file_path_w)
-        else:
-            return os.path.join(MediaElement.project_path, self._file_path_c)
-    
+    def id(self):
+        return self._id
+
     @property
     def name(self):
         return self._name
@@ -341,13 +331,21 @@ class MediaElement(Base):
     def name(self, name):
         self._name = name
 
+    @property
+    def file_path(self):
+        if MediaElement.content_aspect_ratio == 'widescreen':
+            return os.path.join(MediaElement.project_path, self._file_path_w)
+        else:
+            return os.path.join(MediaElement.project_path, self._file_path_c)
+    
+
     def __init__(self, name, file_path_w, file_path_c):
         self._name = name
         self._file_path_w = file_path_w
         self._file_path_c = file_path_c
 
     def __repr__(self):
-        return "{}|{}".format(type(self), self.name)
+        return "{:04d}|{}|{}".format(self.id, type(self), self.name)
 
 
 class VideoElement(MediaElement):
@@ -404,8 +402,12 @@ class VideoElement(MediaElement):
             t_start=0, 
             t_end=None):
         """convert source file and save it in project directory"""
+        if MediaElement._skip_high_workload_functions:
+            open(path_dst, 'a').close()
+            return 42, "16:9"
+
         video_clip = VideoFileClip(path_scr).subclip(t_start=t_start, t_end=t_end)
-        if cinescope:            
+        if cinescope:
             content_aspect = VideoElement._get_video_content_aspect_ratio(video_clip)
         if content_aspect == "16:9" and cinescope:
             #else do nothing cinscope identical with widescreen
@@ -470,8 +472,12 @@ class TextElement(MediaElement):
         self._make_text_image(self.text, self.file_path)
 
     @staticmethod
-    def _make_text_image(text, save_path):
+    def _make_text_image(text, path_dst):
         """create image with given text and save in project folder"""
+        if MediaElement._skip_high_workload_functions:
+            open(path_dst, 'a').close()
+            return
+        
         with Drawing() as draw:
             with Image(width=1920, height=1080, background=Color("black")) as image:
                 #draw.font = 'wandtests/assets/League_Gothic.otf'
@@ -481,7 +487,7 @@ class TextElement(MediaElement):
                 draw.text_alignment = 'center'
                 draw.text(int(image.width / 2), int(image.height / 2), text)
                 draw(image)
-                image.save(filename=save_path) 
+                image.save(filename=path_dst) 
 
 
 class StillElement(MediaElement):
@@ -517,7 +523,10 @@ class StillElement(MediaElement):
 
             To many gif frames are causing a segmentation fault!!
         """
-
+        if MediaElement._skip_high_workload_functions:
+            open(path_dst, 'a').close()
+            return
+        
         if cinescope:
             screesize =  (1920, 810)
         else:
@@ -555,7 +564,7 @@ class StartElement(MediaElement):
         super().__init__('viewcontrol', 'media/viewcontrol.png', 'media/viewcontrol.png')
 
 
-class MediaElementManager:
+class MediaElementManager(ManagerBase):
     """Manager for all media elemets at runtime and in database.
 
     Args:
@@ -567,54 +576,16 @@ class MediaElementManager:
 
     """
 
-    def __init__(self, session):
-        self._session = session
-        self._elements = []
-        self._elements_load_from_db()
+    def _elements_get_with_name_from_db(self, name, num=1):
+        return self._session.query(MediaElement)\
+            .filter(MediaElement._name==name).first()
 
-    @property
-    def session(self):
-        return self._session
+    def _elements_get_by_id_from_db(self, id):
+        return self._session.query(MediaElement)\
+            .filter(MediaElement._id==id).first()
 
-    @property
-    def elements(self):
-        return self._elements
-
-    def element_add(self, element):
-        """add media element to database, if name alreadey exists append number
-        to the name
-        """
-        element.name = self._check_name_exists(element.name)
-        self._elements.append(element)
-        self._session.add(element)
-        self._session.commit()
-        return True
-
-    def element_delete(self, element):
-        return False
-
-    def element_rename(self, element, new_name):
-        element.name = self._check_name_exists(new_name)
-        self._session.commit()
-        return True
-
-    def element_get_with_name(self, name):
-        for e in self._elements:
-            if e.name==name:
-                return e
-        return None
-
-    def _check_name_exists(self, name, num=1):
-        """check if name already exists. If True, append a number if"""
-        if num > 1:
-            name='{}_{}'.format(name, num)
-        name_exists = self._session.query(MediaElement).filter(MediaElement._name==name).first()
-        if name_exists:
-            name = self._check_name_exists(name, num=num+1)
-        return name
-
-    def _elements_load_from_db(self):
-        self._elements = self._session.query(MediaElement).all()
+    def _elements_get_all_from_db(self):
+        return self._session.query(MediaElement).all()
 
 
 class SequenceModule(Base):
@@ -645,27 +616,27 @@ class SequenceModule(Base):
 
     """
     
-    __tablename__ = 'sequenceElements'
-    id = Column(Integer, primary_key=True)
-    sequence_name = Column(String(20), nullable=True)
-    position = Column(Integer)
-    time = Column(Float)
+    __tablename__ = 'sequence_module'
+    _id = Column(Integer, primary_key=True, name="id")
+    _sequence_name = Column(String(20), nullable=True)
+    _position = Column(Integer)
+    _time = Column(Float)
     _deleted = Column(Boolean, name="deleted", default=False)
     #https://docs.sqlalchemy.org/en/13/orm/join_conditions.html
     _logic_element_id = Column(Integer, 
         ForeignKey('logicElement.id'), name="logic_element_id")
-    logic_element = relationship("LogicElement", 
+    _logic_element = orm.relationship("LogicElement", 
         foreign_keys=[_logic_element_id])
     _media_element_id = Column(Integer, 
         ForeignKey('mediaElement.id'), name="media_element_id")
-    media_element = relationship("MediaElement", 
+    _media_element = orm.relationship("MediaElement", 
         foreign_keys=[_media_element_id])
-    _list_commands = relationship("CommandObject", back_populates="_parent")
+    _list_commands = orm.relationship("ModuleCommand", back_populates="sequence_module")
 
 
     def __init__(self, sequence_name, position, element=None, time=None, list_commands=[]):
-        self.sequence_name = sequence_name
-        self.position = position
+        self._sequence_name = sequence_name
+        self._position = position
         if isinstance(element, VideoElement):
             #get length of video
             time = element.duration
@@ -675,40 +646,65 @@ class SequenceModule(Base):
             time = time
         else:
             time = None
-        self.time=time
+        self._time=time
         self._element_set(element)
-        if isinstance(list_commands, list):
-            self._list_commands = list_commands
-        else:
-            self._list_commands = [list_commands]
+        self._list_commands = list()
+        self.command_add(list_commands)
 
     def __repr__(self):
-        return "|{:04d}|{:<20}{}".format(self.position, self.name, self.time)
+        return "|{:04d}|{:04d}|{:<20}{}".format(self.id, self._position, self.name, self._time)
+
+    @property
+    def id(self):
+        return self._id
 
     @property
     def name(self):
         """name is equal element name"""
-        if self.media_element:
-            return self.media_element.name
+        if self._media_element:
+            return self._media_element.name
         else:
-            return self.logic_element.name
+            return self._logic_element.name
+
+    @property
+    def position(self):
+        return self._position
+
+    @position.setter
+    def position(self, pos):
+        self._position = pos
+
+    @property
+    def time(self):
+        return self._time
+
+    @property
+    def media_element(self):
+        return self._media_element
+
+    @property
+    def logic_element(self):
+        return self._logic_element
 
     @property
     def list_commands(self):
-        return self._list_commands
+        list_commands = list()
+        for mc in self._list_commands:
+            list_commands.append((mc.command, mc.delay))
+        return list_commands
 
     def _element_set(self, element):
         """set element depending of class"""
         if not element:
             return
         elif issubclass(type(element), MediaElement):
-            self.media_element = element
+            self._media_element = element
         elif issubclass(type(element), LogicElement):
-            self.logic_element = element
+            self._logic_element = element
 
-    def element_add(self, obj):
+    def element_set(self, obj):
         """add media or logic element to playlist pos"""
-        if not self.media_element and not self.sequence_name:
+        if not self._media_element and not self._sequence_name:
             self._element_set(obj)
         else:
             raise Exception("SequenceModule already conatins an element.")
@@ -721,20 +717,143 @@ class SequenceModule(Base):
         """replace the current media element with a new one."""
         raise NotImplementedError
 
-    def command_add(self, command_obj):
-        """add a command to the command list"""
-        self._list_commands.append(command_obj)
+    def command_add(self, command_delay_tuple):
+        if not isinstance(command_delay_tuple, list):
+            command_delay_tuple = [command_delay_tuple]
+        for cmd in command_delay_tuple:
+            if not self._command_add(cmd):
+                return False
+        return True
 
-    def command_remove(self, command):
+    def _command_add(self, command_delay_tuple):
+        """add a command to the command list"""
+        if not isinstance(command_delay_tuple, tuple):
+            return False
+        tmp = ModuleCommand()
+        tmp.command = command_delay_tuple[0]
+        tmp.delay = command_delay_tuple[1]
+        self._list_commands.append(tmp)
+        return True
+
+    def command_remove(self, command_obj):
         """remove a command from the command list"""
-        raise NotImplementedError
+        raise NotImplementedError()    
 
     def module_delete_self(self):
         self._deleted = True
 
+    def rename_sequence(self, new_name):
+        self._sequence_name = new_name
+
+    def make_transient(self, new_sequence_name=None):
+        commands = self.list_commands
+        orm.make_transient(self)
+        self._id = None
+        if new_sequence_name:
+            self._sequence_name = new_sequence_name    
+        if commands:
+            for cmd in commands:
+                self.command_add(cmd) 
+
     @staticmethod
     def viewcontroll_placeholder():
         return SequenceModule("None", 0, element=StartElement(), time=5)
+
+
+class ModuleCommand(Base):
+    """Assosication Table for Many to Many Relationship, with delay saved in 
+    association table
+    
+    """
+
+    __tablename__ = 'module_command'
+    sequence_module_id = Column(Integer, ForeignKey('sequence_module.id'), primary_key=True)
+    sequence_module = orm.relationship("SequenceModule", back_populates="_list_commands")
+
+    command_id = Column(Integer, ForeignKey('command.id'), primary_key=True)
+    command = orm.relationship("CommandObject")#, back_populates="_list_commands")
+    
+    delay = Column(Integer)
+
+
+class CommandObject(Base):
+    """Command Database Object
+
+    """
+    __tablename__ = 'command'
+    _id = Column(Integer, primary_key=True, name="id")
+    #_parent_id = Column(Integer, 
+    #    ForeignKey('sequenceElements.id'), name="parent_id")
+    _parents = orm.relationship("ModuleCommand", back_populates="command")
+    _name = Column(String(50), name="name")
+    _device = Column(String(50), name="device")
+    _name_cmd = Column(String(50), name="name_cmd")
+    _cmd_parameter1 = Column(String(10), name="cmd_parameter1")
+    _cmd_parameter2 = Column(String(10), name="cmd_parameter2")
+    _cmd_parameter3 = Column(String(10), name="cmd_parameter3")
+
+    def __init__(self, name, device, name_cmd, *args):
+        self._name = name
+        self._name_cmd = name_cmd
+        self._device = device
+        self.set_parameters(*args)
+
+    @property
+    def id(self):
+        return self._id
+
+    @property
+    def name(self):
+        return self._name
+
+    @name.setter
+    def name(self, name):
+        self._name = name
+
+    @property
+    def device(self):
+        return self._device
+
+    @property
+    def name_cmd(self):
+        return self._name_cmd
+
+    def get_parameters(self):
+        if not self._cmd_parameter1:
+            return ()
+        elif self._cmd_parameter3:
+            return (int(self._cmd_parameter1), int(self._cmd_parameter2), 
+                int(self._cmd_parameter3))
+        elif self._cmd_parameter2:
+            return (int(self._cmd_parameter1), int(self._cmd_parameter2))
+        else:  # self.cmd_parameter1
+            return (int(self._cmd_parameter1),)
+
+    def set_parameters(self, *args):
+        if len(args) > 0:
+            self._cmd_parameter1 = args[0]
+        if len(args) > 1:
+            self._cmd_parameter2 = args[1]
+        if len(args) > 2:
+            self._cmd_parameter3 = args[2]
+
+    def __repr__(self):
+        return "{:04d}|{}|{}|{}|{}".format(
+            self.id, self._name, self._device, self._name_cmd, self.get_parameters())
+
+
+class CommandObjectManager(ManagerBase):
+
+    def _elements_get_with_name_from_db(self, name, num=1):
+        return self._session.query(CommandObject)\
+            .filter(CommandObject._name==name).first()
+
+    def _elements_get_by_id_from_db(self, id):
+        return self._session.query(CommandObject)\
+            .filter(CommandObject._id==id).first()
+
+    def _elements_get_all_from_db(self):
+        return self._session.query(CommandObject).all()
 
 
 class Show():
@@ -771,6 +890,7 @@ class Show():
         MediaElement.set_content_aspect_ratio(content_aspect_ratio)
         self._mm = MediaElementManager(self._session)
         self._lm = LogicElementManager(self._session)
+        self._cm = CommandObjectManager(self._session)
         self._sequence = list()  
         self._current_pos = 0 
 
@@ -791,12 +911,16 @@ class Show():
         return sorted(self._sequence, key=lambda mod: mod.position)
 
     @property
-    def media_list(self):
+    def list_media(self):
         return self._mm.elements
 
     @property
-    def logic_list(self):
+    def list_logic(self):
         return self._lm.elements
+
+    @property
+    def list_command(self):
+        return self._cm.elements
 
     @property
     def module_current(self):
@@ -837,12 +961,16 @@ class Show():
     def show_name(self):
         return self._show_name
 
+    @show_name.setter
+    def show_name(self, new_name):
+        self._show_name = self._check_show_name_exists(new_name)
+
     @property
     def show_list(self):
         return self._show_load_show_names()
 
     def _show_load_show_names(self, deleted=False):
-        r =  self._session.query(SequenceModule.sequence_name)\
+        r =  self._session.query(SequenceModule._sequence_name)\
             .filter(SequenceModule._deleted==deleted).distinct().all()
         return [i[0] for i in r]
 
@@ -868,6 +996,45 @@ class Show():
         else:
             return False  # error code: name already exists
 
+    def show_copy(self, name_scr_show, name_new_show):
+        current_show_save = None
+        if not self.show_name == name_scr_show:
+            current_show_save = self.show_name
+            self.show_load(name_scr_show)
+        for seq_mod in self._sequence:
+            if self._module_copy(seq_mod, new_show=name_new_show, positioning=False):
+                continue
+            else:
+                self._session.rollback()
+                return False
+        self._session.commit()
+        if current_show_save:
+            self.show_load(current_show_save)
+        return True
+
+    def show_rename(self, new_name, old_name=None):
+        if not old_name:
+            if not self._show_name:
+                return False  # error code: no show loaded and no name provided
+            old_name2 = self._show_name
+        else:
+            if old_name in self.show_list:
+                old_name2 = old_name
+            else:
+                return False  # error code: show does not exist
+        
+        to_re_name = self._session.query(SequenceModule)\
+            .filter(SequenceModule._sequence_name==old_name2).all()
+
+        for mod in to_re_name:
+            mod.rename_sequence(new_name)
+        self._session.commit()
+
+        if not old_name2:
+            self.show.load(new_name)
+        return True
+        
+
     def show_close(self):
         self._sequence = list()
         self.show = None
@@ -885,7 +1052,7 @@ class Show():
         if del_name in self.show_list:
             
             to_delte = self._session.query(SequenceModule)\
-                .filter(SequenceModule.sequence_name==del_name).all()
+                .filter(SequenceModule._sequence_name==del_name).all()
             for mod in to_delte:
                 mod.module_delete_self()
             self._session.commit()
@@ -896,20 +1063,34 @@ class Show():
         else:
             return False  # error code: name does not exist
         
-        
+    def _check_show_name_exists(self, name, num=1):
+        """check if name already exists. If True, append a number if"""
+        if num > 1:
+            name='{}_{}'.format(name, num)
+        if name in self._show_load_show_names():
+            name = self._check_show_name_exists(name, num=num+1)
+        return name
+
     ##### module methods #####
     
-    def _module_add(self, element, pos=None, time=None, commands=[]):
+    def _module_add(self, element, pos=None, time=None, commands_delay_tuple=[]):
         """adds a module to playlist at given pos or at end when pos=None"""
         if not self._show_name:
             raise Exception("no show loaded")
-        if isinstance(element, MediaElement):
-            self._mm.element_add(element)
-        else:
-            self._lm.element_add(element)
-        sm = SequenceModule(self._show_name, len(self._sequence), 
-            element=element, time=time, list_commands=commands)
+        if not element.id:
+            if isinstance(element, MediaElement):
+                self._mm.element_add(element)
+            else:
+                self._lm.element_add(element)
+        sm = SequenceModule(self._show_name, None, 
+            element=element, time=time)
+        self._module_add_command(sm, commands_delay_tuple)
         return self._module_append_to_pos(sm, pos)
+
+    def module_copy(self, pos, new_pos=None):
+        module = self._module_get_at_pos(pos)
+        new_mod = self._module_copy(module)
+        return self._module_append_to_pos(new_mod, new_pos)
 
     def module_remove(self, pos):
         return self._module_remove(self._module_get_at_pos(pos))
@@ -927,19 +1108,19 @@ class Show():
     def module_text_change_text(self, pos, new_text):
         return self._module_text_change_text(self._module_get_at_pos(pos), new_text)
 
-    def _module_text_change_text(self, module, new_text):
-        module.media_element.text = new_text
-        return True
-
     def module_add_video(self, name, file_path, t_start=0, t_end=None, **kwargs):
         """add a module coonatining a StillElement"""
         e = VideoElement(name, file_path, t_start=t_start, t_end=t_end)
         return self._module_add(e, **kwargs)
 
-    def module_add_jumptotarget(self, name, name_event, pos=None, commands=[]):
+    def module_add_media_by_id(self, id, time, **kwargs):
+        e = self._mm._elements_get_by_id_from_db(id)
+        return self._module_add(e, time=time, **kwargs)
+
+    def module_add_jumptotarget(self, name, name_event, pos=None, **kwargs):
         """apends a jump to target sequence module"""
         jttm = JumpToTarget(name, name_event)
-        ret = self._module_add(jttm, pos, commands=commands)
+        ret = self._module_add(jttm, pos, **kwargs)
         self._find_jumptotarget_elements()
         return ret
 
@@ -966,15 +1147,19 @@ class Show():
         return self.module_change_position(pos, pos+1)
 
     def module_change_position(self, old_pos, new_pos):
-        element = self._module_get_at_pos(old_pos)
-        return self._module_change_position(element, new_pos)
+        module = self._module_get_at_pos(old_pos)
+        return self._module_change_position(module, new_pos)
 
     def module_add_command_to_pos(self, pos, command):
         return self._module_add_command(self._module_get_at_pos(pos), command)
 
+    def module_add_command_by_id_to_pos(self, pos, id, delay=0):
+        cmd = self._cm._elements_get_by_id_from_db(id)
+        return self._module_add_command(self._module_get_at_pos(pos), (cmd, delay))
+
     def module_rename(self, pos, new_name):
-        element = self._module_get_at_pos(pos)
-        return self._module_rename(element, new_name)
+        module = self._module_get_at_pos(pos)
+        return self._module_rename(module, new_name)
 
     def _module_rename(self, module, new_name):
         if module.media_element:
@@ -983,29 +1168,40 @@ class Show():
             return self._lm.element_rename(module.logic_element, new_name)
         # manager will commit
 
-    def _module_append_to_pos(self, element, pos=None):
+    def _module_append_to_pos(self, module, pos=None):
         """append element at given position"""
-        self._sequence.append(element)
-        self._session.add(element)
+        if not module.position:
+            module.position = len(self._sequence)
+        self._sequence.append(module)
+        self._session.add(module)
         self._session.commit()
         if pos:
-            return self._module_change_position(element, pos)
+            return self._module_change_position(module, pos)
         else:
             return True
 
-    def _module_remove(self, element):
-        self._module_change_position_end(element)
-        self._sequence.remove(element)
-        self._session.delete(element)
+    def _module_copy(self, module, new_name=None, new_show=None, positioning=True):
+        module.make_transient(new_sequence_name=new_show)    
+        if not positioning:
+            self._session.add(module)
+            self._session.commit()
+        else:
+            module.position = None
+        return module
+
+    def _module_remove(self, module):
+        self._module_change_position_end(module)
+        self._sequence.remove(module)
+        self._session.delete(module)
         self._session.commit()
         return True
 
-    def _module_change_position_end(self, element):
-        return self._module_change_position(element, self.count-1)
+    def _module_change_position_end(self, module):
+        return self._module_change_position(module, self.count-1)
 
-    def _module_change_position(self, element, new_pos):
+    def _module_change_position(self, module, new_pos):
         """change position of sequence elements"""
-        cur_pos = element.position
+        cur_pos = module.position
         if cur_pos < new_pos:
             next_pos = cur_pos+1
         elif cur_pos > new_pos:
@@ -1015,14 +1211,14 @@ class Show():
             return True
 
         self._module_get_at_pos(next_pos).position = cur_pos
-        element.position = next_pos
+        module.position = next_pos
         
-        return self._module_change_position(element, new_pos)
+        return self._module_change_position(module, new_pos)
 
     def _module_load_from_db(self):
         """load show from database"""
         self._sequence = self._session.query(SequenceModule).\
-            filter(SequenceModule.sequence_name==self._show_name).all()
+            filter(SequenceModule._sequence_name==self._show_name).all()
 
     def _module_get_with_name(self, name):
         for seqm in self._sequence:
@@ -1041,14 +1237,18 @@ class Show():
                 return s
         raise Exception("Position '{}' does not exist.".format(position))
     
-    def _module_add_command(self, element, command):
-        if not isinstance(command, list):
-            command = [command]
-        for cmd in command:
-            element.command_add(cmd)
-        self._session.commit()
+    def _module_text_change_text(self, module, new_text):
+        module.media_element.text = new_text
         return True
 
+    def _module_add_command(self, module, command_delay_tuple):
+        if module.command_add(command_delay_tuple):
+            for cmd in module.list_commands:
+                self._cm.element_add(cmd[0])
+            self._session.commit()
+            return True
+        else:
+            return False
 
     def _handle_global_event(self, evnet_name):
         """preperation for future development
@@ -1088,8 +1288,8 @@ class Show():
                 os.makedirs(project_folder)
         db_file = os.path.join(project_folder, 'vcproject.db3')
         engine = 'sqlite:///'+db_file
-        some_engine = create_engine(engine)
+        some_engine = sqlalchemy.create_engine(engine)
         Base.metadata.create_all(some_engine, 
             Base.metadata.tables.values(),checkfirst=True)
-        Session = sessionmaker(bind=some_engine)
+        Session = orm.sessionmaker(bind=some_engine)
         return Session()
