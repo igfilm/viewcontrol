@@ -1,27 +1,17 @@
-import yaml
 import os
-import time
-import datetime
-from copy import deepcopy as dc
+#import time
+#import datetime
+#from copy import deepcopy as dc
 from numpy import array, arange
-import math
+#import math
 from shutil import copyfile
 import queue
-
 import abc
 
+import sqlalchemy
 from sqlalchemy import orm
 from sqlalchemy import Column, Integer, String, Boolean, Time, ForeignKey, Float, Table
-from sqlalchemy.orm import relationship, backref
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import desc
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.orm import joinedload, selectinload
-from sqlalchemy.orm import make_transient
-from sqlalchemy.ext.associationproxy import association_proxy
-from sqlalchemy import event
-from sqlalchemy.orm import Session
 
 from moviepy.video.io.VideoFileClip import VideoFileClip
 from moviepy.video.VideoClip import ColorClip
@@ -107,6 +97,10 @@ class ManagerBase(abc.ABC):
         pass
 
     @abc.abstractmethod
+    def _elements_get_by_id_from_db(self, id):
+        pass
+
+    @abc.abstractmethod
     def _elements_get_all_from_db(self):
         pass
 
@@ -126,7 +120,7 @@ class LogicElement(Base):
 
     """
     __tablename__ = 'logicElement'
-    id = Column(Integer, primary_key=True)
+    _id = Column(Integer, primary_key=True, name="id")
     _name = Column(String(50), name="name", unique=True)
     _key = Column(Integer, name="key")
     _etype = Column(String(20), name="etype")
@@ -139,6 +133,10 @@ class LogicElement(Base):
     def __init__(self, name, key):
         self.name = name
         self._key = key
+
+    @property
+    def id(self):
+        return self._id
 
     @property
     def name(self):
@@ -154,6 +152,8 @@ class LogicElement(Base):
     def key(self):
         return self._key
 
+    def __repr__(self):
+        return "{:04d}|{}|{}".format(self.id, type(self), self.name)
 
 class LoopStart(LogicElement):
     """Saves position for the start of a loop condition"""
@@ -223,6 +223,10 @@ class LogicElementManager(ManagerBase):
         return self.session.query(LogicElement) \
             .filter(LogicElement._name==name).first()
 
+    def _elements_get_by_id_from_db(self, id):
+        return self._session.query(LogicElement)\
+            .filter(LogicElement._id==id).first()
+
     def _elements_get_all_from_db(self):
         return self.session.query(LogicElement).all()
 
@@ -231,7 +235,7 @@ class LogicElementManager(ManagerBase):
         which will be added to the list via add_element by the calling function
         """
         raw_key = self.session.query(LoopStart._key) \
-            .order_by(desc(LoopStart._key)).first()
+            .order_by(sqlalchemy.desc(LoopStart._key)).first()
         if not raw_key:
             key = 1
         else:
@@ -274,10 +278,10 @@ class MediaElement(Base):
 
     """
     __tablename__ = 'mediaElement'
-    id = Column(Integer, primary_key=True, )
+    _id = Column(Integer, primary_key=True, name="id")
     _name = Column(String(20), name ="name", unique=True)
-    _file_path_w = Column(String(200), name="file_path_w", unique=True)
-    _file_path_c = Column(String(200), name="file_path_c", unique=True)
+    _file_path_w = Column(String(200), name="file_path_w")
+    _file_path_c = Column(String(200), name="file_path_c")
     _etype = Column(String(10), name="etype")
 
     __mapper_args__ = {
@@ -323,12 +327,9 @@ class MediaElement(Base):
                 os.path.relpath(target_file, start=MediaElement.project_path)  
 
     @property
-    def file_path(self):
-        if MediaElement.content_aspect_ratio == 'widescreen':
-            return os.path.join(MediaElement.project_path, self._file_path_w)
-        else:
-            return os.path.join(MediaElement.project_path, self._file_path_c)
-    
+    def id(self):
+        return self._id
+
     @property
     def name(self):
         return self._name
@@ -337,13 +338,21 @@ class MediaElement(Base):
     def name(self, name):
         self._name = name
 
+    @property
+    def file_path(self):
+        if MediaElement.content_aspect_ratio == 'widescreen':
+            return os.path.join(MediaElement.project_path, self._file_path_w)
+        else:
+            return os.path.join(MediaElement.project_path, self._file_path_c)
+    
+
     def __init__(self, name, file_path_w, file_path_c):
         self._name = name
         self._file_path_w = file_path_w
         self._file_path_c = file_path_c
 
     def __repr__(self):
-        return "{}|{}".format(type(self), self.name)
+        return "{:04d}|{}|{}".format(self.id, type(self), self.name)
 
 
 class VideoElement(MediaElement):
@@ -405,7 +414,7 @@ class VideoElement(MediaElement):
             return 42, "16:9"
 
         video_clip = VideoFileClip(path_scr).subclip(t_start=t_start, t_end=t_end)
-        if cinescope:            
+        if cinescope:
             content_aspect = VideoElement._get_video_content_aspect_ratio(video_clip)
         if content_aspect == "16:9" and cinescope:
             #else do nothing cinscope identical with widescreen
@@ -578,6 +587,10 @@ class MediaElementManager(ManagerBase):
         return self._session.query(MediaElement)\
             .filter(MediaElement._name==name).first()
 
+    def _elements_get_by_id_from_db(self, id):
+        return self._session.query(MediaElement)\
+            .filter(MediaElement._id==id).first()
+
     def _elements_get_all_from_db(self):
         return self._session.query(MediaElement).all()
 
@@ -611,28 +624,26 @@ class SequenceModule(Base):
     """
     
     __tablename__ = 'sequence_module'
-    id = Column(Integer, primary_key=True)
-    sequence_name = Column(String(20), nullable=True)
-    position = Column(Integer)
-    time = Column(Float)
+    _id = Column(Integer, primary_key=True, name="id")
+    _sequence_name = Column(String(20), nullable=True)
+    _position = Column(Integer)
+    _time = Column(Float)
     _deleted = Column(Boolean, name="deleted", default=False)
     #https://docs.sqlalchemy.org/en/13/orm/join_conditions.html
     _logic_element_id = Column(Integer, 
         ForeignKey('logicElement.id'), name="logic_element_id")
-    logic_element = relationship("LogicElement", 
+    _logic_element = orm.relationship("LogicElement", 
         foreign_keys=[_logic_element_id])
     _media_element_id = Column(Integer, 
         ForeignKey('mediaElement.id'), name="media_element_id")
-    media_element = relationship("MediaElement", 
+    _media_element = orm.relationship("MediaElement", 
         foreign_keys=[_media_element_id])
-    #_list_commands = relationship("CommandObject", secondary=association_table_command, backref="parents")
-    _list_commands = relationship("ModuleCommand", back_populates="sequence_module")
-    #_list_commands = association_proxy('module_commands', 'command')
+    _list_commands = orm.relationship("ModuleCommand", back_populates="sequence_module")
 
 
     def __init__(self, sequence_name, position, element=None, time=None, list_commands=[]):
-        self.sequence_name = sequence_name
-        self.position = position
+        self._sequence_name = sequence_name
+        self._position = position
         if isinstance(element, VideoElement):
             #get length of video
             time = element.duration
@@ -642,21 +653,45 @@ class SequenceModule(Base):
             time = time
         else:
             time = None
-        self.time=time
+        self._time=time
         self._element_set(element)
         self._list_commands = list()
         self.command_add(list_commands)
 
     def __repr__(self):
-        return "|{:04d}|{:<20}{}".format(self.position, self.name, self.time)
+        return "|{:04d}|{:04d}|{:<20}{}".format(self.id, self._position, self.name, self._time)
+
+    @property
+    def id(self):
+        return self._id
 
     @property
     def name(self):
         """name is equal element name"""
-        if self.media_element:
-            return self.media_element.name
+        if self._media_element:
+            return self._media_element.name
         else:
-            return self.logic_element.name
+            return self._logic_element.name
+
+    @property
+    def position(self):
+        return self._position
+
+    @position.setter
+    def position(self, pos):
+        self._position = pos
+
+    @property
+    def time(self):
+        return self._time
+
+    @property
+    def media_element(self):
+        return self._media_element
+
+    @property
+    def logic_element(self):
+        return self._logic_element
 
     @property
     def list_commands(self):
@@ -670,13 +705,13 @@ class SequenceModule(Base):
         if not element:
             return
         elif issubclass(type(element), MediaElement):
-            self.media_element = element
+            self._media_element = element
         elif issubclass(type(element), LogicElement):
-            self.logic_element = element
+            self._logic_element = element
 
-    def element_add(self, obj):
+    def element_set(self, obj):
         """add media or logic element to playlist pos"""
-        if not self.media_element and not self.sequence_name:
+        if not self._media_element and not self._sequence_name:
             self._element_set(obj)
         else:
             raise Exception("SequenceModule already conatins an element.")
@@ -714,6 +749,19 @@ class SequenceModule(Base):
     def module_delete_self(self):
         self._deleted = True
 
+    def rename_sequence(self, new_name):
+        self._sequence_name = new_name
+
+    def make_transient(self, new_sequence_name=None):
+        commands = self.list_commands
+        orm.make_transient(self)
+        self._id = None
+        if new_sequence_name:
+            self._sequence_name = new_sequence_name    
+        if commands:
+            for cmd in commands:
+                self.command_add(cmd) 
+
     @staticmethod
     def viewcontroll_placeholder():
         return SequenceModule("None", 0, element=StartElement(), time=5)
@@ -727,10 +775,10 @@ class ModuleCommand(Base):
 
     __tablename__ = 'module_command'
     sequence_module_id = Column(Integer, ForeignKey('sequence_module.id'), primary_key=True)
-    sequence_module = relationship("SequenceModule", back_populates="_list_commands")
+    sequence_module = orm.relationship("SequenceModule", back_populates="_list_commands")
 
     command_id = Column(Integer, ForeignKey('command.id'), primary_key=True)
-    command = relationship("CommandObject")#, back_populates="_list_commands")
+    command = orm.relationship("CommandObject")#, back_populates="_list_commands")
     
     delay = Column(Integer)
 
@@ -740,10 +788,10 @@ class CommandObject(Base):
 
     """
     __tablename__ = 'command'
-    id = Column(Integer, primary_key=True)
+    _id = Column(Integer, primary_key=True, name="id")
     #_parent_id = Column(Integer, 
     #    ForeignKey('sequenceElements.id'), name="parent_id")
-    _parents = relationship("ModuleCommand", back_populates="command")
+    _parents = orm.relationship("ModuleCommand", back_populates="command")
     _name = Column(String(50), name="name")
     _device = Column(String(50), name="device")
     _name_cmd = Column(String(50), name="name_cmd")
@@ -756,6 +804,10 @@ class CommandObject(Base):
         self._name_cmd = name_cmd
         self._device = device
         self.set_parameters(*args)
+
+    @property
+    def id(self):
+        return self._id
 
     @property
     def name(self):
@@ -793,8 +845,8 @@ class CommandObject(Base):
             self._cmd_parameter3 = args[2]
 
     def __repr__(self):
-        return "{}|{}|{}|{}".format(
-            self._name, self._device, self._name_cmd, self.get_parameters())
+        return "{:04d}|{}|{}|{}|{}".format(
+            self.id, self._name, self._device, self._name_cmd, self.get_parameters())
 
 
 class CommandObjectManager(ManagerBase):
@@ -802,6 +854,10 @@ class CommandObjectManager(ManagerBase):
     def _elements_get_with_name_from_db(self, name, num=1):
         return self._session.query(CommandObject)\
             .filter(CommandObject._name==name).first()
+
+    def _elements_get_by_id_from_db(self, id):
+        return self._session.query(CommandObject)\
+            .filter(CommandObject._id==id).first()
 
     def _elements_get_all_from_db(self):
         return self._session.query(CommandObject).all()
@@ -921,7 +977,7 @@ class Show():
         return self._show_load_show_names()
 
     def _show_load_show_names(self, deleted=False):
-        r =  self._session.query(SequenceModule.sequence_name)\
+        r =  self._session.query(SequenceModule._sequence_name)\
             .filter(SequenceModule._deleted==deleted).distinct().all()
         return [i[0] for i in r]
 
@@ -963,6 +1019,29 @@ class Show():
             self.show_load(current_show_save)
         return True
 
+    def show_rename(self, new_name, old_name=None):
+        if not old_name:
+            if not self._show_name:
+                return False  # error code: no show loaded and no name provided
+            old_name2 = self._show_name
+        else:
+            if old_name in self.show_list:
+                old_name2 = old_name
+            else:
+                return False  # error code: show does not exist
+        
+        to_re_name = self._session.query(SequenceModule)\
+            .filter(SequenceModule._sequence_name==old_name2).all()
+
+        for mod in to_re_name:
+            mod.rename_sequence(new_name)
+        self._session.commit()
+
+        if not old_name2:
+            self.show.load(new_name)
+        return True
+        
+
     def show_close(self):
         self._sequence = list()
         self.show = None
@@ -980,7 +1059,7 @@ class Show():
         if del_name in self.show_list:
             
             to_delte = self._session.query(SequenceModule)\
-                .filter(SequenceModule.sequence_name==del_name).all()
+                .filter(SequenceModule._sequence_name==del_name).all()
             for mod in to_delte:
                 mod.module_delete_self()
             self._session.commit()
@@ -1005,10 +1084,11 @@ class Show():
         """adds a module to playlist at given pos or at end when pos=None"""
         if not self._show_name:
             raise Exception("no show loaded")
-        if isinstance(element, MediaElement):
-            self._mm.element_add(element)
-        else:
-            self._lm.element_add(element)
+        if not element.id:
+            if isinstance(element, MediaElement):
+                self._mm.element_add(element)
+            else:
+                self._lm.element_add(element)
         sm = SequenceModule(self._show_name, None, 
             element=element, time=time)
         self._module_add_command(sm, commands_delay_tuple)
@@ -1018,23 +1098,6 @@ class Show():
         module = self._module_get_at_pos(pos)
         new_mod = self._module_copy(module)
         return self._module_append_to_pos(new_mod, new_pos)
-
-    def _module_copy(self, module, new_name=None, new_show=None, positioning=True):
-        commands = module.list_commands
-        make_transient(module)
-        module.id = None
-        if new_show:
-            module.sequence_name = new_show        
-        if commands:
-            for cmd in commands:
-                module.command_add(cmd)
-
-        if not positioning:
-            self._session.add(module)
-            self._session.commit()
-        else:
-            module.position = None
-        return module
 
     def module_remove(self, pos):
         return self._module_remove(self._module_get_at_pos(pos))
@@ -1052,14 +1115,14 @@ class Show():
     def module_text_change_text(self, pos, new_text):
         return self._module_text_change_text(self._module_get_at_pos(pos), new_text)
 
-    def _module_text_change_text(self, module, new_text):
-        module.media_element.text = new_text
-        return True
-
     def module_add_video(self, name, file_path, t_start=0, t_end=None, **kwargs):
         """add a module coonatining a StillElement"""
         e = VideoElement(name, file_path, t_start=t_start, t_end=t_end)
         return self._module_add(e, **kwargs)
+
+    def module_add_media_by_id(self, id, time, **kwargs):
+        e = self._mm._elements_get_by_id_from_db(id)
+        return self._module_add(e, time=time, **kwargs)
 
     def module_add_jumptotarget(self, name, name_event, pos=None, **kwargs):
         """apends a jump to target sequence module"""
@@ -1097,6 +1160,10 @@ class Show():
     def module_add_command_to_pos(self, pos, command):
         return self._module_add_command(self._module_get_at_pos(pos), command)
 
+    def module_add_command_by_id_to_pos(self, pos, id, delay=0):
+        cmd = self._cm._elements_get_by_id_from_db(id)
+        return self._module_add_command(self._module_get_at_pos(pos), (cmd, delay))
+
     def module_rename(self, pos, new_name):
         module = self._module_get_at_pos(pos)
         return self._module_rename(module, new_name)
@@ -1119,6 +1186,15 @@ class Show():
             return self._module_change_position(module, pos)
         else:
             return True
+
+    def _module_copy(self, module, new_name=None, new_show=None, positioning=True):
+        module.make_transient(new_sequence_name=new_show)    
+        if not positioning:
+            self._session.add(module)
+            self._session.commit()
+        else:
+            module.position = None
+        return module
 
     def _module_remove(self, module):
         self._module_change_position_end(module)
@@ -1149,7 +1225,7 @@ class Show():
     def _module_load_from_db(self):
         """load show from database"""
         self._sequence = self._session.query(SequenceModule).\
-            filter(SequenceModule.sequence_name==self._show_name).all()
+            filter(SequenceModule._sequence_name==self._show_name).all()
 
     def _module_get_with_name(self, name):
         for seqm in self._sequence:
@@ -1168,13 +1244,18 @@ class Show():
                 return s
         raise Exception("Position '{}' does not exist.".format(position))
     
-    def _module_add_command(self, module, command_delay_tuple):
-        module.command_add(command_delay_tuple)
-        for cmd in module.list_commands:
-            self._cm.element_add(cmd[0])
-        self._session.commit()
+    def _module_text_change_text(self, module, new_text):
+        module.media_element.text = new_text
         return True
 
+    def _module_add_command(self, module, command_delay_tuple):
+        if module.command_add(command_delay_tuple):
+            for cmd in module.list_commands:
+                self._cm.element_add(cmd[0])
+            self._session.commit()
+            return True
+        else:
+            return False
 
     def _handle_global_event(self, evnet_name):
         """preperation for future development
@@ -1214,8 +1295,8 @@ class Show():
                 os.makedirs(project_folder)
         db_file = os.path.join(project_folder, 'vcproject.db3')
         engine = 'sqlite:///'+db_file
-        some_engine = create_engine(engine)
+        some_engine = sqlalchemy.create_engine(engine)
         Base.metadata.create_all(some_engine, 
             Base.metadata.tables.values(),checkfirst=True)
-        Session = sessionmaker(bind=some_engine)
+        Session = orm.sessionmaker(bind=some_engine)
         return Session()
