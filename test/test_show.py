@@ -1,23 +1,24 @@
-import unittest
 import os
 import shutil
-import time
-
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-
 import sys
+import time
+import unittest
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from viewcontrol import show
 
+
+# if True add a empty file instead of media elememnts
+# WARNING! dont forget run propper test_case before testing the module
+skip_workload = False
 
 class TestShow(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
         cls.project_folder = os.path.expanduser("testing")
-        show.MediaElement._skip_high_workload_functions = True
+        show.MediaElement._skip_high_workload_functions = skip_workload
         if os.path.exists(cls.project_folder):
             shutil.rmtree(cls.project_folder)
 
@@ -82,7 +83,7 @@ class TestShowPlaylist(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.project_folder = os.path.expanduser("testing")
-        show.MediaElement._skip_high_workload_functions = False
+        show.MediaElement._skip_high_workload_functions = skip_workload
         #if os.path.exists(cls.project_folder):
         #    shutil.rmtree(cls.project_folder)
 
@@ -233,11 +234,33 @@ class TestShowPlaylist(unittest.TestCase):
         self.assertTrue(self.show.show_copy(None, "testing_copy"))
         self.assertTrue(self.show.show_load("testing_copy"))
         self.assertEqual(self.show.count, 12)
+        self.assertEqual(len(self.show._module_get_at_pos(11).list_commands), 2)
+
+    def test_2001_rename_show(self):
+        self.assertTrue(self.show.show_load("testing_copy"))
+        self.assertTrue(self.show.show_rename("testing_copy_renamed"))
+        self.assertEqual(self.show.count, 12)
+        self.assertTrue(self.show.show_list, ['testC', 'testC_copy', 'testing', 'testing_copy_renamed'])
+
+    def test_2003_rename_show_back(self):
+        self.assertTrue(self.show.show_list, ['testC', 'testC_copy', 'testing', 'testing_copy_renamed'])
+        self.assertTrue(self.show.show_rename("testing_copy", old_name="testing_copy_renamed"))
+        self.assertTrue(self.show.show_list, ['testC', 'testC_copy', 'testing', 'testing_copy'])
+        self.assertTrue(self.show.show_load("testing_copy"))
+        self.assertEqual(self.show.count, 12)
 
     def test_2010_change_command(self):
         pass
 
-
+    def test_2011_add_by_id(self):
+        self.assertTrue(self.show.module_add_media_by_id(4, 10))
+        self.assertEqual(self.show.count, 13)
+        self.assertEqual(self.show._module_get_at_pos(12).media_element.id, self.show._module_get_at_pos(0).media_element.id)
+        self.assertTrue(self.show.module_add_command_by_id_to_pos(12, 4, delay=3.14))
+        self.assertEqual(len(self.show.playlist[12].list_commands), 1)
+        self.assertEqual(self.show.playlist[12].list_commands[0][0].id, self.show.playlist[0].list_commands[0][0].id)
+        self.assertEqual(self.show.playlist[12].list_commands[0][1], 3.14)
+        self.assertEqual(self.show.playlist[0].list_commands[0][1], 3)
 
 
 if __name__ == '__main__':

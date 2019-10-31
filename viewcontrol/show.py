@@ -1,12 +1,8 @@
-import os
-#import time
-#import datetime
-#from copy import deepcopy as dc
+import abc
 from numpy import array, arange
-#import math
+import os
 from shutil import copyfile
 import queue
-import abc
 
 import sqlalchemy
 from sqlalchemy import orm
@@ -25,10 +21,6 @@ from wand.drawing import Drawing
 
 Base = declarative_base()
 
-#association_table_command = Table('association_cmd', Base.metadata,
-#    Column('sequenceElements_id', Integer, ForeignKey('sequenceElements.id')),
-#    Column('command_id', Integer, ForeignKey('command.id'))
-#)
 
 class ManagerBase(abc.ABC):
     """Manager basse class for all managers at runtime and in database.
@@ -154,6 +146,7 @@ class LogicElement(Base):
 
     def __repr__(self):
         return "{:04d}|{}|{}".format(self.id, type(self), self.name)
+
 
 class LoopStart(LogicElement):
     """Saves position for the start of a loop condition"""
