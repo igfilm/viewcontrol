@@ -263,5 +263,42 @@ class TestShowPlaylist(unittest.TestCase):
         self.assertEqual(self.show.playlist[0].list_commands[0][1], 3)
 
 
+class TestShowOptions(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.project_folder = os.path.expanduser("testing")
+        cls.con_denon = ("192.168.178.201", 9030)
+        cls.con_atlona = ("192.168.178.202", 23)
+
+    @classmethod
+    def tearDownClass(cls):
+        #shutil.rmtree(cls.project_folder)
+        return
+
+    def setUp(self):
+        self.show = show.Show(TestShowOptions.project_folder)
+        self.show.show_load("testing")
+        self.d = self.show.show_options.devices
+
+    def tearDown(self):
+        return
+
+    def test_1000(self):
+        self.assertGreater(len(self.d), 0)
+        self.assertIn("AtlonaATOMESW32", self.d.keys())
+        self.assertIn("DenonDN500BD", self.d.keys())
+        self.assertTrue(self.show.show_options.set_device_property(
+            self.d.get("DenonDN500BD"), enabled=True, connection=TestShowOptions.con_denon))
+        self.assertEqual(TestShowOptions.con_denon, self.d.get("DenonDN500BD").connection)
+
+    def test_1001(self):
+        self.assertEqual(TestShowOptions.con_denon, self.d.get("DenonDN500BD").connection)
+        self.assertTrue(self.d.get("DenonDN500BD").enabled)
+        self.assertFalse(self.d.get("AtlonaATOMESW32").enabled)
+        self.assertTrue(self.show.show_options.set_device_property(
+            self.d.get("AtlonaATOMESW32"), enabled=True, connection=TestShowOptions.con_atlona))
+            
+
 if __name__ == '__main__':
     unittest.main(failfast=True)

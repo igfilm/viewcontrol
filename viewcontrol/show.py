@@ -1,8 +1,11 @@
 import abc
+import inspect
+import importlib
 from numpy import array, arange
 import os
-from shutil import copyfile
+import pkgutil
 import queue
+from shutil import copyfile
 
 import sqlalchemy
 from sqlalchemy import orm
@@ -20,6 +23,99 @@ from wand.drawing import Drawing
 
 
 Base = declarative_base()
+
+class ShowOptions():
+
+    def __init__(self, session):
+        self._session = session
+        self._devices = list()
+        self._elements_load_from_db()
+        
+        package = importlib.import_module("viewcontrol.remotecontrol")
+        for _, modname, ispkg in pkgutil.iter_modules(package.__path__):
+            if ispkg:
+                try:
+                    mod = importlib.import_module(
+                        "viewcontrol.remotecontrol.{}.threadcommunication"
+                        .format(modname))
+                except ModuleNotFoundError:
+                    continue
+                clsmembers = inspect.getmembers(mod, inspect.isclass)
+                for clsm in clsmembers:
+                    x = clsm[1].mro()
+                    if len(x) > 5:
+                        if not clsm[0] in self.devices.keys():
+                            print("adding " + clsm[0])
+                            self._add_device(clsm[1])
+
+    @property
+    def devices(self):
+        device_dict = dict()
+        for device in self._devices:
+            device_dict.update({device.name: device})
+        return device_dict
+
+    def _add_device(self, device_class):
+        dev = ShowOptionDevice(device_class)
+        self._devices.append(dev)
+        self._session.add(dev)
+        self._session.commit()
+
+    def _elements_load_from_db(self):
+        self._devices.extend(self._session.query(ShowOptionDevice).all())
+
+    def set_device_property(self, device, enabled=None, connection=None):
+        if not enabled and not connection:
+            return False
+        if enabled:
+            device.enabled = enabled
+        if connection:
+            device.connection = connection
+        self._session.commit()
+        return True
+
+
+class ShowOptionDevice(Base):
+    __tablename__ = 'show_option_device'
+    _id = Column(Integer, primary_key=True, name='id')
+    _name = Column(String(50))
+    _ip_address = Column(String(15), name="ip_address")
+    _port = Column(Integer, name="port")
+    _enabled = Column(Boolean, default=False, name="enabled")
+    _protocol = Column(String(50), name="protocol")
+    _dev_class = Column(String(100))
+
+    @property
+    def name(self):
+        return self._name
+
+    @property
+    def connection(self):
+        return (self._ip_address, self._port)
+
+    @connection.setter
+    def connection(self, tuple_ip_port):
+        self._ip_address = tuple_ip_port[0]
+        self._port = tuple_ip_port[1]
+
+    @property
+    def enabled(self):
+        return self._enabled
+
+    @enabled.setter
+    def enabled(self, enabled):
+        self._enabled = enabled
+
+    @property
+    def dev_class(self):
+        return self._dev_class
+
+    def __init__(self, device_class):
+        self._name = device_class.__name__
+        self._protocol = device_class.mro()[0].__module__.split('.')[2]
+        self._dev_class = str(device_class)
+        
+
 
 
 class ManagerBase(abc.ABC):
@@ -892,7 +988,8 @@ class Show():
         self._lm = LogicElementManager(self._session)
         self._cm = CommandObjectManager(self._session)
         self._sequence = list()  
-        self._current_pos = 0 
+        self._current_pos = 0
+        self.show_options = ShowOptions(self._session)
 
     def _find_jumptotarget_elements(self):
         """find all jumptotarget_elements in playlist and set the property"""

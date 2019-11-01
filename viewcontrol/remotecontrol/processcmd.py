@@ -5,6 +5,7 @@ import socket
 import telnetlib
 import time
 import re
+import importlib
 
 import logging
 import sys
@@ -20,9 +21,9 @@ from viewcontrol.show import CommandObject
 
 class ProcessCmd(multiprocessing.Process):
     
-    def __init__(self, logger_config, queue_status, queue_comand, modules, **kwargs):
+    def __init__(self, logger_config, queue_status, queue_comand, device_options, **kwargs):
         super().__init__(name='ProcessCmd', **kwargs)
-        self._dummy = CommandProcess(logger_config, queue_status, queue_comand, modules, self.name)
+        self._dummy = CommandProcess(logger_config, queue_status, queue_comand, device_options, self.name)
 
     def run(self):
         self._dummy.run()
@@ -70,12 +71,23 @@ class CommandProcess:
             ThreadCommunicationBase.set_queues(self.q_recv, self.q_stat)
 
             self.listeners = list()
+            self.signals = dict()
             
-            #TODO make this more dynamic
-            if 'DenonDN500BD' in self.devices:
-                self.listeners.append(tcpip.DenonDN500BD("192.168.178.201", 9030))
-            if 'AtlonaATOMESW32' in self.devices:
-                self.listeners.append(telnet.AtlonaATOMESW32("192.168.178.202", 23))
+            self.signal_sink = signal("sink_send")
+            self.signal_sink.connect(self.subsr_signal_sink)
+
+            for device in self.devices.values():
+                if device.enabled:
+                    name_tmp = device.dev_class[8:-2].split('.')
+                    name_class = name_tmp.pop(-1)
+                    name_module = ".".join(name_tmp)  
+                    module = importlib.import_module(name_module)
+                    class_ = getattr(module, name_class)
+                    self.listeners.append(class_(*device.connection))
+                    s = signal("{}_send".format(name_class))
+                    self.signals.update({name_class: s})
+                else:
+                    self.signals.update({device.name: self.signal_sink})
 
             for l in self.listeners:
                 l.start()
@@ -96,11 +108,12 @@ class CommandProcess:
                         pass
                     continue
 
-                #maybe automate by cheking all regigisstered event names
-                if cmd_tpl[0].device == "DenonDN500BD":
-                    signal("DenonDN500BD_send").send(cmd_tpl[0])
-                if cmd_tpl[0].device == "AtlonaATOMESW32":
-                    signal("AtlonaATOMESW32_send").send(cmd_tpl[0])
+                try:
+                    sig = self.signals.get(cmd_tpl[0].device)
+                    sig.send(cmd_tpl[0])
+                except (KeyError, AttributeError):
+                    self.logger.warning("Device {} not known"
+                        .format(cmd_tpl[0].device))
 
         except Exception as e:
                 try:
@@ -109,3 +122,6 @@ class CommandProcess:
                     self.logger.error("Uncaught exception in process '{}'"
                             .format(self.name), 
                         exc_info=(e))
+
+    def subsr_signal_sink(self, value):
+        self.logger.warning("Command '{}' was not send to a device!".format(value))
