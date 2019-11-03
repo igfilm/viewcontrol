@@ -532,17 +532,26 @@ class StillElement(MediaElement):
         else:
             screesize =  (1920, 1080)
 
-        max_upscale = 2
+        max_upscale = 10
 
-        with Image(filename=path_scr) as scr:
-            scr.colorspace = 'rgb'
-            scr.format = 'jpeg'            
-            a = screesize[0]/scr.width
-            b = screesize[1]/scr.height
+        #check size, if pdf calc resulution to import it in the needed size
+        with Image(filename=path_scr, width=1920) as tmp_scr:
+            a = screesize[0]/tmp_scr.width
+            b = screesize[1]/tmp_scr.height
             scale = min(a, b)
             if max_upscale and scale > max_upscale:
                 scale = max_upscale 
-            s_size = (int(scr.width * scale), int(scr.height * scale))
+            s_size = (int(tmp_scr.width * scale), int(tmp_scr.height * scale))
+
+            if tmp_scr.mimetype == "application/pdf":
+                res = (tmp_scr.resolution[0] * scale, tmp_scr.resolution[1] * scale)
+                scale = 1
+            else:
+                res = None
+
+        with Image(filename=path_scr, resolution=res) as scr:
+            scr.colorspace = 'rgb'
+            scr.format = 'jpeg'            
 
             if not scr.mimetype == "image/gif":
                 with Image(width=1920, height=1080, background=Color("black")) as dst:   
