@@ -17,6 +17,7 @@ from viewcontrol.remotecontrol.tcpip import threadcommunication as tcpip
 from viewcontrol.remotecontrol.telnet import threadcommunication as telnet
 from viewcontrol.remotecontrol.threadcommunicationbase import ThreadCommunicationBase
 from viewcontrol.show import CommandObject
+import viewcontrol.tools.timing as timing
 
 
 class ProcessCmd(multiprocessing.Process):
@@ -41,8 +42,6 @@ class ThreadCmd(threading.Thread):
 class CommandProcess:
     """Manages Threads for diferent devices 
 
-    WARNING: all commands are send without any delay
-    add listeners to send command events via status queue to main process
     """
 
     def __init__(self, logger_config, queue_status, queue_comand, devices, parent_name):
@@ -72,6 +71,7 @@ class CommandProcess:
 
             self.listeners = list()
             self.signals = dict()
+            self.timers = list()
             
             self.signal_sink = signal("sink_send")
             self.signal_sink.connect(self.subsr_signal_sink)
@@ -94,26 +94,24 @@ class CommandProcess:
 
             while True:
                 cmd_tpl = self.queue_comand.get(block=True)
-                self.logger.info("~~> recived data: '{}':'{}'"
-                    .format(type(cmd_tpl), str(cmd_tpl)))
-                if isinstance(cmd_tpl, CommandObject):
-                    pass
-                elif isinstance(cmd_tpl, str):
+                #self.logger.info("~~> recived data: '{}':'{}'"
+                #    .format(type(cmd_tpl), str(cmd_tpl)))
+                if isinstance(cmd_tpl, str):
                     # implemnt pausing and handling of delayed commands
                     if cmd_tpl == "pause":
-                        pass
+                        [t.pause for t in self.timers]
                     elif cmd_tpl == "resume":
-                        pass
+                        [t.resume for t in self.timers]
                     elif cmd_tpl == "next":
                         pass
                     continue
 
-                try:
-                    sig = self.signals.get(cmd_tpl[0].device)
-                    sig.send(cmd_tpl[0])
-                except (KeyError, AttributeError):
-                    self.logger.warning("Device {} not known"
-                        .format(cmd_tpl[0].device))
+                if cmd_tpl[1] == 0:
+                    self.send_to_thread(cmd_tpl[0])
+                else:
+                    t = timing.RenewableTimer(cmd_tpl[1], self.send_to_thread, cmd_tpl[0])
+                    t.start()
+                    self.timers.append(t)
 
         except Exception as e:
                 try:
@@ -123,5 +121,14 @@ class CommandProcess:
                             .format(self.name), 
                         exc_info=(e))
 
+    def send_to_thread(self, cmd_obj):
+        try:
+            sig = self.signals.get(cmd_obj.device)
+            sig.send(cmd_obj)
+        except (KeyError, AttributeError):
+            self.logger.warning("Device {} not known"
+                .format(cmd_obj.device))
+
     def subsr_signal_sink(self, value):
-        self.logger.warning("Command '{}' was not send to a device!".format(value))
+        self.logger.warning("~~X command '{}' was not send to {}!" \
+            .format(value, value.device))

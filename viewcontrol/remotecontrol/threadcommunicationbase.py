@@ -33,14 +33,15 @@ class ThreadCommunicationBase(threading.Thread, abc.ABC):
         cls.__q_stat = q_stat
 
     def put_q_recv(self, value):
-        self.logger.info("<~~ send data recv: '{}'".format(value))
+        self.logger.info("<~~ recived data recv: '{}'".format(value))
         self.__q_recv.put(value)
 
     def put_q_stat(self, value):
-        self.logger.info("<~~ send data stat: '{}'".format(value))
+        self.logger.info("<~~ recived data stat: '{}'".format(value))
         self.__q_stat.put(value)
 
     def subsr_signal_send(self, value):
+        self.logger.info("~~> sending data: '{}'".format(value))
         self.q_send.put(value)
 
     def run(self):
