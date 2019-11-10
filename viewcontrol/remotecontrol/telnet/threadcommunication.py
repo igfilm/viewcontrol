@@ -3,9 +3,9 @@ import os
 import re
 import time
 
-from viewcontrol.remotecontrol.threadcommunicationbase import ThreadCommunicationBase
+from viewcontrol.remotecontrol.threadcommunicationbase import ThreadCommunicationBase, ComPackage, ComType
 from viewcontrol.remotecontrol.commanditembase import DictCommandItemLib
-import viewcontrol.remotecontrol.telnet.commanditem as ci 
+import viewcontrol.remotecontrol.telnet.commanditem as ci
 
 
 class ThreadCommunication(ThreadCommunicationBase):
@@ -33,6 +33,7 @@ class ThreadCommunication(ThreadCommunicationBase):
 
     def listen(self):
 
+        self.last_send_cmd_obj = None
         self.last_send_data = None      
         last_send_time = time.time()
         self.echo_recived = False
@@ -50,10 +51,11 @@ class ThreadCommunication(ThreadCommunicationBase):
                 #  -queue not empty
                 if time_tmp-last_send_time > .5 \
                         and not self.echo_recived \
-                        and not self.q_send.empty():
-                    val = self.q_send.get()
-                    str_send = self.compose(val)
-                    self.logger.info("Send: {0:<78}R{0}".format(str_send))
+                        and not self.q_comand.empty():
+                    cmd_obj = self.q_comand.get()
+                    self.last_send_cmd_obj = cmd_obj
+                    str_send = self.compose(cmd_obj)
+                    self.logger.debug("Send: {0:<78}R{0}".format(str_send))
                     self.last_send_data = str_send.encode()
                     tn.write(self.last_send_data)
                     last_send_time = time_tmp
@@ -72,7 +74,7 @@ class ThreadCommunication(ThreadCommunicationBase):
                 self.logger.warning("Command '{}' not found in dict_deneon!"
                     .format(cmd_obj.name_cmd))
             else:
-                args = cmd_obj.get_args()
+                args = cmd_obj.get_parameters()
                 if args:
                     str_send = dict_obj.get_send_command(*args)
                 else:
@@ -85,12 +87,21 @@ class ThreadCommunication(ThreadCommunicationBase):
     def interpret(self, val, sock):
         return val
 
+    def connection_active(self):
+        return True
+
 
 class AtlonaATOMESW32(ThreadCommunication):
 
     def __init__(self, target_ip, target_port):
         super().__init__("AtlonaATOMESW32", target_ip, target_port)
         self.echo_recived = False
+
+    def contains_error(self, string):
+        if re.search(ci.AtlonaATOMESW32.error_seq, string):
+            return True
+        else:
+            return False
 
     def interpret(self, str_recv, tn):
         #check if recived massage is valid         
@@ -101,25 +112,41 @@ class AtlonaATOMESW32(ThreadCommunication):
                 self.echo_recived = True
                 return
 
-            #decode mesage and find the corresponding entyr in the
-            #dictionary (when provided)
+            #decode mesage
             str_recv = str_recv.decode().rstrip()
-            if(self.dict_c):
-                value = self.dict_c.get_full_answer(str_recv)
-            else:
-                value = (None, str_recv)
 
+            answ_obj = ComPackage(self.name)
             #if an echo was recived a command was send before,
             #else a status message was send from the client
             if self.echo_recived:
-                #if command failed
-                if re.search(ci.AtlonaATOMESW32.error_seq, str_recv):
-                    self.logger.info("Echo: {}".format(str_recv))
-                    self.put_q_stat(str_recv)
+                answ_obj.command_obj = self.last_send_cmd_obj
+                answ_obj.recv_answer_string = str_recv
+                if self.dict_c:
+                    dict_obj = self.dict_c.get(self.last_send_cmd_obj.name_cmd)
+                    if self.contains_error(str_recv):
+                        if dict_obj.string_requ:
+                            answ_obj.type = ComType.request_failed
+                        else:
+                            answ_obj.type = ComType.command_failed
+                    else:
+                        if dict_obj.string_requ:
+                            answ_obj.type = ComType.request_success
+                        else:
+                            answ_obj.type = ComType.command_success
+                        #answ_obj.full_answer = self.dict_c.get_full_answer(
+                        #    answ_obj.recv_answer_string)
                 else:
-                    self.logger.info("Echo: {0:<30} --> {1:<43}E{0}".format(str(str_recv), str(value)))
-                    self.put_q_recv(str_recv)
+                    if self.contains_error(str_recv):
+                        answ_obj.type = ComType.failed
+                    else:
+                        answ_obj.type = ComType.success
                 self.echo_recived=False
             else:
-                self.logger.info("Stat: {0:<30} --> {1:<43}S{0}".format(str(str_recv), str(value)))
-                self.put_q_stat(str_recv)
+                answ_obj.recv_answer_string = str_recv
+                answ_obj.type = ComType.message_status
+
+            if self.dict_c and not answ_obj.type in [ComType.failed, ComType.command_failed, ComType.request_failed]:
+                answ_obj.full_answer = self.dict_c.get_full_answer(
+                    answ_obj.recv_answer_string)
+
+            self.put_queue(answ_obj)

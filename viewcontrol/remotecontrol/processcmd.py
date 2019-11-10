@@ -65,9 +65,7 @@ class CommandProcess:
 
         try:
 
-            self.q_recv = queue.Queue()
-            self.q_stat = queue.Queue()
-            ThreadCommunicationBase.set_queues(self.q_recv, self.q_stat)
+            ThreadCommunicationBase.set_answer_queue(self.queue_status)
 
             self.listeners = list()
             self.signals = dict()
@@ -94,10 +92,7 @@ class CommandProcess:
 
             while True:
                 cmd_tpl = self.queue_comand.get(block=True)
-                #self.logger.info("~~> recived data: '{}':'{}'"
-                #    .format(type(cmd_tpl), str(cmd_tpl)))
                 if isinstance(cmd_tpl, str):
-                    # implemnt pausing and handling of delayed commands
                     if cmd_tpl == "pause":
                         [t.pause for t in self.timers]
                     elif cmd_tpl == "resume":

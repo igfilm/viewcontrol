@@ -3,6 +3,7 @@ import abc
 import time
 import logging
 import queue
+from enum import Enum
 from blinker import signal
 
 class ThreadCommunicationBase(threading.Thread, abc.ABC):
@@ -14,42 +15,34 @@ class ThreadCommunicationBase(threading.Thread, abc.ABC):
     overwritten with the device-specific communication.
     """
 
-    __q_recv = None
-    __q_stat = None
+    __answer_queue = None
     retry_interval = 10
-    #logger as classs variable?
 
-    def __init__(self, name, type_exeption=(OSError), **kwargs):
+    def __init__(self, name, **kwargs):
         super().__init__(daemon=True, name=name, **kwargs)
-        self.q_send = queue.Queue()
+        self.q_comand = queue.Queue()
         self.logger = logging.getLogger()
-        self.type_exeption = type_exeption
+        self.type_exeption = (OSError)
         self.signal = signal("{}_send".format(self.name))
         self.signal.connect(self.subsr_signal_send)
 
     @classmethod
-    def set_queues(cls, q_recv ,q_stat):
-        cls.__q_recv = q_recv
-        cls.__q_stat = q_stat
+    def set_answer_queue(cls, answer_queue):
+        cls.__answer_queue = answer_queue
 
-    def put_q_recv(self, value):
-        self.logger.info("<~~ recived data recv: '{}'".format(value))
-        self.__q_recv.put(value)
-
-    def put_q_stat(self, value):
-        self.logger.info("<~~ recived data stat: '{}'".format(value))
-        self.__q_stat.put(value)
+    def put_queue(self, value):
+        self.logger.info("<~~ recived data: '{}'".format(str(value)))
+        self.__answer_queue.put(value)
 
     def subsr_signal_send(self, value):
         self.logger.info("~~> sending data: '{}'".format(value))
-        self.q_send.put(value)
+        self.q_comand.put(value)
 
     def run(self):
         self.logger.info("Started controll thread of device '{}'.".format(self.name))
-        if not (ThreadCommunicationBase.__q_recv
-                 and ThreadCommunicationBase.__q_stat):
-            self.logger.error("One or many Queues not set!")
-            raise Exception("One or many Queues not set!")
+        if not ThreadCommunicationBase.__answer_queue:
+            self.logger.error("Answer Queue Not Set!")
+            raise Exception("Answer Queue Not Set!")
         while True:
             try:
                 self.listen()
@@ -72,4 +65,58 @@ class ThreadCommunicationBase(threading.Thread, abc.ABC):
 
     @abc.abstractmethod
     def listen(self):
+        """The listen funtion shal manages all communication with the Device
+            >listen to status masages
+            >send commands at regular intervals (<100ms) from queue
+            >return if command was sucsessfull
+            >zuordnen von befejlen zu dict
+            TODO prepare standart errors
+        """
         pass
+
+    @property
+    #@abc.abstractmethod    
+    def connection_active(self):
+        return False
+
+
+class ComPackage(object):
+
+    def __init__(self, device, command_obj=None):
+        self.device = device
+        self.command_obj = command_obj
+        self.send_cmd_string = None
+        self.recv_answer_byte = None
+        self.recv_answer_string = None
+        self.type = None
+        self.full_answer = None
+
+    def __repr__(self):
+        if self.full_answer:
+            full_answer = self.full_answer
+        else:
+            full_answer = ""
+        return "{} - {} - ({}) - {} {}" \
+            .format(self.device, 
+                self.type, 
+                self.command_obj.name if self.command_obj else None,  
+                self.recv_answer, 
+                full_answer)
+
+    @property
+    def recv_answer(self):#
+        if self.recv_answer_byte:
+            return self.recv_answer_byte
+        else:
+            return self.recv_answer_string
+    
+
+class ComType(Enum):
+    unidentifiable = 0
+    success = 1
+    failed = -1
+    command_success = 3
+    command_failed = -3
+    request_success = 2
+    request_failed = -2
+    message_status = 42

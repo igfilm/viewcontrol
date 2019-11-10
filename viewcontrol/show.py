@@ -934,8 +934,12 @@ class CommandObject(Base):
             self._cmd_parameter3 = args[2]
 
     def __repr__(self):
+        if self.id:
+            id = self.id
+        else:
+            id = -1
         return "{:04d}|{}|{}|{}|{}".format(
-            self.id, self._name, self._device, self._name_cmd, self.get_parameters())
+            id, self._name, self._device, self._name_cmd, self.get_parameters())
 
 
 class CommandObjectManager(ManagerBase):
