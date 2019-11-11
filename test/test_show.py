@@ -214,12 +214,12 @@ class TestShowPlaylist(unittest.TestCase):
     def test_1401_add_command(self):
         self.assertEqual(self.show.count, 10)
         commands=[
-            (show.CommandObject("jump to start chapter", "DenonDN500BD", "Track Jump", 1), 1),
-            (show.CommandObject("swich video to BluRay", "AtlonaATOMESW32", "Set Output", 2, 1), 2)]
+            (show.CommandObject("jump to start chapter", "DenonDN500BD", "Track Jump", 1), 0),
+            (show.CommandObject("swich video to BluRay", "AtlonaATOMESW32", "Set Output", 2, 1), 0)]
         self.assertTrue(self.show.module_add_text("film ab", "FILM AB", 1, commands_delay_tuple=commands))
         self.assertEqual(self.show.count, 11)
         self.assertEqual(len(self.show._module_get_at_pos(10).list_commands), 2)
-        command2 = (show.CommandObject("swich video to PC", "AtlonaATOMESW32", "Set Output", 3, 1), 3)
+        command2 = (show.CommandObject("swich video to PC", "AtlonaATOMESW32", "Set Output", 3, 1), 1)
         self.assertTrue(self.show.module_add_command_to_pos(0, command2))
         self.assertEqual(len(self.show._module_get_at_pos(0).list_commands), 1)
 
@@ -256,11 +256,17 @@ class TestShowPlaylist(unittest.TestCase):
         self.assertTrue(self.show.module_add_media_by_id(4, 10))
         self.assertEqual(self.show.count, 13)
         self.assertEqual(self.show._module_get_at_pos(12).media_element.id, self.show._module_get_at_pos(0).media_element.id)
-        self.assertTrue(self.show.module_add_command_by_id_to_pos(12, 4, delay=3.14))
+        self.assertTrue(self.show.module_add_command_by_id_to_pos(12, 4, delay=-9999))
         self.assertEqual(len(self.show.playlist[12].list_commands), 1)
         self.assertEqual(self.show.playlist[12].list_commands[0][0].id, self.show.playlist[0].list_commands[0][0].id)
-        self.assertEqual(self.show.playlist[12].list_commands[0][1], 3.14)
-        self.assertEqual(self.show.playlist[0].list_commands[0][1], 3)
+        self.assertGreater(self.show.playlist[12].list_commands[0][1], 0)
+        self.assertEqual(self.show.playlist[0].list_commands[0][1], 1)
+        self.assertTrue(self.show.module_remove_all_commands_from_pos(12))
+        self.assertEqual(len(self.show.playlist[12].list_commands), 0)
+
+    def test_2011_check_remove_command(self):
+        self.assertEqual(len(self.show.playlist[12].list_commands), 0)
+
 
 
 class TestShowOptions(unittest.TestCase):

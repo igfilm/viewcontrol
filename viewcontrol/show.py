@@ -736,7 +736,7 @@ class SequenceModule(Base):
         ForeignKey('mediaElement.id'), name="media_element_id")
     _media_element = orm.relationship("MediaElement", 
         foreign_keys=[_media_element_id])
-    _list_commands = orm.relationship("ModuleCommand", back_populates="sequence_module")
+    _list_commands = orm.relationship("ModuleCommand", back_populates="sequence_module", cascade="all, delete-orphan")
 
 
     def __init__(self, sequence_name, position, element=None, time=None, list_commands=[]):
@@ -831,18 +831,45 @@ class SequenceModule(Base):
         return True
 
     def _command_add(self, command_delay_tuple):
-        """add a command to the command list"""
+        """add a command to the command list
+        
+            delay can be:
+                > positiv: delay from start of object
+                > negativ: delay before end of object
+                > .9999  : delay at end of obj (send when obj is finished)
+                > 0      : command send imediatly
+            
+            WARNING: delay will not be updtaed when element duration changes
+        """
+
         if not isinstance(command_delay_tuple, tuple):
             return False
         tmp = ModuleCommand()
         tmp.command = command_delay_tuple[0]
-        tmp.delay = command_delay_tuple[1]
+        if command_delay_tuple[1] < 0:
+            if self._time:
+                if not command_delay_tuple[1] == -9999:
+                    tmp.delay = self._time + command_delay_tuple[1]
+                    if tmp.delay < 0:
+                        tmp.delay = 0
+                else:
+                    tmp.delay = self._time
+            else:
+                return False  # time not set negativ value noz possible
+        else:
+            tmp.delay = command_delay_tuple[1]
         self._list_commands.append(tmp)
         return True
 
     def command_remove(self, command_obj):
         """remove a command from the command list"""
-        raise NotImplementedError()    
+        if isinstance(command_obj, tuple):
+            command_obj = command_obj[0]
+        for mod_com in self._list_commands:
+            if mod_com.command is command_obj:
+                self._list_commands.remove(mod_com)
+        #WARNING no verificartion if and which elements were deleted (or not)
+        return True
 
     def module_delete_self(self):
         self._deleted = True
@@ -1267,6 +1294,10 @@ class Show():
         cmd = self._cm._elements_get_by_id_from_db(id)
         return self._module_add_command(self._module_get_at_pos(pos), (cmd, delay))
 
+    def module_remove_all_commands_from_pos(self, pos):
+        module = self._module_get_at_pos(pos)
+        return self._module_remove_all_commands(module)
+
     def module_rename(self, pos, new_name):
         module = self._module_get_at_pos(pos)
         return self._module_rename(module, new_name)
@@ -1359,6 +1390,14 @@ class Show():
             return True
         else:
             return False
+
+    def _module_remove_all_commands(self, module):
+        for command in module.list_commands:
+            if module.command_remove(command):
+                self._session.commit()
+                return True
+            else:
+                return False
 
     def _handle_global_event(self, evnet_name):
         """preperation for future development
