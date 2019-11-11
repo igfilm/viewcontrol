@@ -66,7 +66,6 @@ class CommandItemBase (yaml.YAMLObject):
             *args: Variable length argument list.
 
         """
-        print(args)
         if len(args)==0:
             return self._combine_command(self.parser_send)
         else:
@@ -82,7 +81,6 @@ class CommandItemBase (yaml.YAMLObject):
                 else:
                     raise ValueError("subcommand '{}' not in dictionary")
             args = tuple(subcommand)
-        print(args)
         return self._combine_command(self.parser_send.format(*args))
     
     def get_send_request(self):
@@ -192,4 +190,4 @@ class DictCommandItemLib(dict):
         if key:
             return (key, self.get(key).get_recv_parser(str_answ))
         else:
-            return "command not found"
+            return None

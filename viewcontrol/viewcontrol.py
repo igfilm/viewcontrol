@@ -46,11 +46,6 @@ class ViewControl(object):
             default=1, 
             type=int,
             help="screen number/id for media playback")
-        parser.add_argument('-d', '--devices', 
-            action='store', 
-            nargs='*', 
-            default=None,
-            help="devices to communicate with, None starts all")
         parser.add_argument('--threading', 
             action='store_true',
             help='run programm only with threading intead of multiprocesing')
@@ -148,16 +143,17 @@ class ViewControl(object):
         self.sig_cmd_command = signal("cmd_command")
         self.sig_cmd_command.connect(self.send_command)
 
-        if not self.argpars_result.devices:
-            devices = ["DenonDN500BD", "AtlonaATOMESW32"]
-        else:
-            devices = self.argpars_result.devices
+        self.playlist = show.Show(
+            project_folder=self.argpars_result.project_folder, 
+            content_aspect_ratio=self.argpars_result.content_aspect_ratio)
+        self.playlist.show_load(self.argpars_result.playlist_name)
+        self.logger.info("loaded Show: {}".format(self.playlist._show_name))
 
         if not self.argpars_result.threading:
             self.process_cmd = ProcessCmd(self.config_queue_logger, 
                     self.cmd_status_queue, 
                     self.cmd_controll_queue, 
-                    devices)
+                    self.playlist.show_options.devices)
             
             self.process_mpv = ProcessMpv(self.config_queue_logger,
                     self.mpv_status_queue, 
@@ -167,7 +163,7 @@ class ViewControl(object):
             self.process_cmd = ThreadCmd(self.logger, 
                 self.cmd_status_queue,
                 self.cmd_controll_queue,
-                devices)
+                self.playlist.show_options.devices)
             
             self.process_mpv = ThreadMpv(self.logger,
                     self.mpv_status_queue, 
@@ -201,13 +197,6 @@ class ViewControl(object):
 
         for process in self.processeses:
             process.start()
-
-        self.playlist = show.Show(
-            project_folder=self.argpars_result.project_folder, 
-            content_aspect_ratio=self.argpars_result.content_aspect_ratio)
-        self.playlist.show_load(self.argpars_result.playlist_name)
-
-        self.logger.info("loaded Show: {}".format(self.playlist._show_name))
 
         time.sleep(1)
 
