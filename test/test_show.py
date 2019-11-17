@@ -4,6 +4,8 @@ import sys
 import time
 import unittest
 
+from pynput.keyboard import Key
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from viewcontrol import show
@@ -223,9 +225,41 @@ class TestShowPlaylist(unittest.TestCase):
         self.assertTrue(self.show.module_add_command_to_pos(0, command2))
         self.assertEqual(len(self.show._module_get_at_pos(0).list_commands), 1)
 
+    def test_1402_add_event(self):
+        em1 = show.KeyEventModule(Key.end, "on_press", name="exit loop")
+        em1.jump_to_target_element = self.show.list_jump_to_target[0]
+        self.assertTrue(self.show.event_module_add(em1))
+        self.assertEqual(len(self.show.list_event), 1)
+        self.assertEqual(self.show.list_event[0], em1)
+        em2 = show.ComEventModule("DenonDN500BD", "fuu", "bar", name="EOM (End of Movie)")
+        em2.command_add(self.show.list_command[0])
+        self.assertTrue(self.show.event_module_add(em2))
+        self.assertEqual(len(self.show.eventlist), 2)
+        self.assertEqual(len(self.show.list_event), 2)
+        self.assertEqual(self.show.list_event[1], em2)
+
+    def test_1402_rename_copy_event(self):
+        self.assertEqual(len(self.show.eventlist), 2)
+        self.assertIsNotNone(self.show.event_module_copy(self.show.eventlist[1], "fuubar"))
+        self.assertEqual(len(self.show.eventlist), 3)
+        self.assertEqual(self.show.eventlist[2].name, "fuubar")
+        self.assertNotEqual(self.show.eventlist[1], self.show.eventlist[2])
+        self.assertEqual(self.show.eventlist[1]._device, "DenonDN500BD")
+        self.assertEqual(self.show.eventlist[2]._device, "DenonDN500BD")
+        self.assertEqual(len(self.show.eventlist[1].list_commands), len(self.show.eventlist[2].list_commands))
+        self.assertIsNotNone(self.show.event_module_copy(self.show.eventlist[0], "fuubar2"))
+        self.assertEqual(len(self.show.eventlist), 4)
+        self.assertEqual(self.show.eventlist[0].jump_to_target_element, self.show.eventlist[3].jump_to_target_element)
+        self.assertTrue(self.show.event_module_delete(self.show.eventlist[2]))
+        self.assertTrue(self.show.event_module_delete(self.show.eventlist[2]))
+        self.assertEqual(len(self.show.eventlist), 2)
+
+
     def test_1500_copy_module(self):
+        self.assertEqual(len(self.show.eventlist), 2)
         self.assertEqual(len(self.show._module_get_at_pos(0).list_commands), 1)
         self.assertTrue(self.show.module_copy(10))
+        self.assertNotEqual(self.show._module_get_at_pos(10), self.show._module_get_at_pos(11))
         self.assertEqual(self.show.count, 12)
         self.assertEqual(len(self.show._module_get_at_pos(11).list_commands), 2)
 
@@ -234,6 +268,7 @@ class TestShowPlaylist(unittest.TestCase):
         self.assertTrue(self.show.show_copy(None, "testing_copy"))
         self.assertTrue(self.show.show_load("testing_copy"))
         self.assertEqual(self.show.count, 12)
+        self.assertEqual(len(self.show.eventlist), 2)
         self.assertEqual(len(self.show._module_get_at_pos(11).list_commands), 2)
 
     def test_2001_rename_show(self):

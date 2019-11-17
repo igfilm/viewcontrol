@@ -1,4 +1,5 @@
 import abc
+import copy
 import inspect
 import importlib
 from numpy import array, arange
@@ -21,8 +22,16 @@ from wand.image import Image
 from wand.color import Color
 from wand.drawing import Drawing
 
+import pynput
 
 Base = declarative_base()
+
+
+"""
+While Modules can only exist in one show (property sequence_name), 
+Elements and Objects are not connected to a given show, and can be reused in 
+all shows, changing them will track the traces through all shows.
+"""
 
 class ShowOptions():
 
@@ -114,8 +123,6 @@ class ShowOptionDevice(Base):
         self._name = device_class.__name__
         self._protocol = device_class.mro()[0].__module__.split('.')[2]
         self._dev_class = str(device_class)
-        
-
 
 
 class ManagerBase(abc.ABC):
@@ -147,7 +154,7 @@ class ManagerBase(abc.ABC):
         """add media element to database, if name alreadey exists append number
         to the name
         """
-        element.name = self._check_name_exists(element.name)
+        element.name = self._check_name_exists(element.name, obj=element)
         self._elements.append(element)
         self._session.add(element)
         self._session.commit()
@@ -157,7 +164,7 @@ class ManagerBase(abc.ABC):
         return False
 
     def element_rename(self, element, new_name, commit=True):
-        element.name = self._check_name_exists(new_name)
+        element.name = self._check_name_exists(new_name, obj=element)
         if commit:
             self._session.commit()
         return True
@@ -168,12 +175,14 @@ class ManagerBase(abc.ABC):
                 return e
         return None
 
-    def _check_name_exists(self, name, num=1):
+    def _check_name_exists(self, name, num=1, obj=None):
         """check if name already exists. If True, append a number if"""
         if num > 1:
             name='{}_{}'.format(name, num)
         name_exists = self._elements_get_with_name_from_db(name)
         if name_exists:
+            if obj and obj.id == name_exists.id:
+                return name
             name = self._check_name_exists(name, num=num+1)
         return name
 
@@ -207,7 +216,7 @@ class LogicElement(Base):
         etyp (string): polymorphic_identity of element in database
 
     """
-    __tablename__ = 'logicElement'
+    __tablename__ = 'logic_element'
     _id = Column(Integer, primary_key=True, name="id")
     _name = Column(String(50), name="name", unique=True)
     _key = Column(Integer, name="key")
@@ -296,6 +305,25 @@ class JumpToTarget(LogicElement):
         return self._name_event
 
 
+class Barrier(LogicElement):
+    """blocking funtion in show until event happens"""
+    __mapper_args__ = {
+        'polymorphic_identity':'Barrier'
+    }
+
+class BarrierEvent(Barrier):
+
+    __mapper_args__ = {
+        'polymorphic_identity':'BarrierEvent'
+    }
+
+class BarrierTime(Barrier):
+
+    __mapper_args__ = {
+        'polymorphic_identity':'BarrierTime'
+    }
+
+
 class LogicElementManager(ManagerBase):
     """Manager for all lofic elemets at runtime and in database.
 
@@ -366,7 +394,7 @@ class MediaElement(Base):
         etype    (string): polymorphic_identity of element in database
 
     """
-    __tablename__ = 'mediaElement'
+    __tablename__ = 'media_element'
     _id = Column(Integer, primary_key=True, name="id")
     _name = Column(String(20), name ="name", unique=True)
     _file_path_w = Column(String(200), name="file_path_w")
@@ -723,17 +751,16 @@ class SequenceModule(Base):
     
     __tablename__ = 'sequence_module'
     _id = Column(Integer, primary_key=True, name="id")
-    _sequence_name = Column(String(20), nullable=True)
+    _sequence_name = Column(String(50), nullable=True)
     _position = Column(Integer)
     _time = Column(Float)
     _deleted = Column(Boolean, name="deleted", default=False)
-    #https://docs.sqlalchemy.org/en/13/orm/join_conditions.html
     _logic_element_id = Column(Integer, 
-        ForeignKey('logicElement.id'), name="logic_element_id")
+        ForeignKey('logic_element.id'), name="logic_element_id")
     _logic_element = orm.relationship("LogicElement", 
         foreign_keys=[_logic_element_id])
     _media_element_id = Column(Integer, 
-        ForeignKey('mediaElement.id'), name="media_element_id")
+        ForeignKey('media_element.id'), name="media_element_id")
     _media_element = orm.relationship("MediaElement", 
         foreign_keys=[_media_element_id])
     _list_commands = orm.relationship("ModuleCommand", back_populates="sequence_module", cascade="all, delete-orphan")
@@ -770,6 +797,14 @@ class SequenceModule(Base):
             return self._media_element.name
         else:
             return self._logic_element.name
+
+    @property
+    def sequence_name(self):
+        return self._sequence_name
+
+    @sequence_name.setter
+    def sequence_name(self, name):
+        self._sequence_name = name
 
     @property
     def position(self):
@@ -843,7 +878,7 @@ class SequenceModule(Base):
         """
 
         if not isinstance(command_delay_tuple, tuple):
-            return False
+            command_delay_tuple = (command_delay_tuple, 0)
         tmp = ModuleCommand()
         tmp.command = command_delay_tuple[0]
         if command_delay_tuple[1] < 0:
@@ -874,45 +909,71 @@ class SequenceModule(Base):
     def module_delete_self(self):
         self._deleted = True
 
-    def rename_sequence(self, new_name):
-        self._sequence_name = new_name
+    #def rename_sequence(self, new_name):
+    #    self._sequence_name = new_name
 
-    def make_transient(self, new_sequence_name=None):
-        commands = self.list_commands
-        orm.make_transient(self)
-        self._id = None
-        if new_sequence_name:
-            self._sequence_name = new_sequence_name    
-        if commands:
-            for cmd in commands:
-                self.command_add(cmd) 
+    def copy(self):
+        copy = SequenceModule(
+            sequence_name = self._sequence_name,
+            position = self.position,
+            element= self.logic_element if self.logic_element else self.media_element,
+            time= self.time
+        )
+        for cmd in self.list_commands:
+            copy.command_add(cmd)
+        return copy
 
     @staticmethod
     def viewcontroll_placeholder():
         return SequenceModule("None", 0, element=StartElement(), time=5)
 
 
-class ModuleCommand(Base):
+class AssosciationCommand(Base):
+
+    __tablename__ = 'assosciation_command'
+    _id = Column(Integer, primary_key=True, name="id")
+    _etype = Column(String(10), name="etype")
+
+    command_id = Column(Integer, ForeignKey('command_object.id'))
+    command = orm.relationship("CommandObject")
+
+    delay = Column(Integer)
+
+    __mapper_args__ = {
+        'polymorphic_on':_etype,
+        'polymorphic_identity':'AssosciationCommand'
+    }
+
+
+class ModuleCommand(AssosciationCommand):
     """Assosication Table for Many to Many Relationship, with delay saved in 
     association table
     
     """
 
-    __tablename__ = 'module_command'
-    sequence_module_id = Column(Integer, ForeignKey('sequence_module.id'), primary_key=True)
+    sequence_module_id = Column(Integer, ForeignKey('sequence_module.id'))
     sequence_module = orm.relationship("SequenceModule", back_populates="_list_commands")
 
-    command_id = Column(Integer, ForeignKey('command.id'), primary_key=True)
-    command = orm.relationship("CommandObject")#, back_populates="_list_commands")
-    
-    delay = Column(Integer)
+    __mapper_args__ = {
+        'polymorphic_identity':'ModuleCommand'
+    }
+
+
+class EventCommand(AssosciationCommand):
+
+    event_module_id = Column(Integer, ForeignKey('event_module.id'))
+    event_module = orm.relationship("EventModule", back_populates="_list_commands")
+
+    __mapper_args__ = {
+        'polymorphic_identity':'EventCommand'
+    }
 
 
 class CommandObject(Base):
     """Command Database Object
 
     """
-    __tablename__ = 'command'
+    __tablename__ = 'command_object'
     _id = Column(Integer, primary_key=True, name="id")
     #_parent_id = Column(Integer, 
     #    ForeignKey('sequenceElements.id'), name="parent_id")
@@ -992,6 +1053,238 @@ class CommandObjectManager(ManagerBase):
         return self._session.query(CommandObject).all()
 
 
+class EventModule(Base):
+    """Module for events of a show.
+    
+    No abc.ABC abstract class because of metaclass conflict
+    """
+    __tablename__ = 'event_module'
+    _id = Column(Integer, primary_key=True, name="id")
+    _sequence_name = Column(String(50), nullable=True)
+    _name = Column(String(50), name="name")
+    _etype = Column(String(10), name="etype")
+    _list_commands = orm.relationship("EventCommand", back_populates="event_module", cascade="all, delete-orphan")
+    _jump_to_target_element_id = Column(Integer, ForeignKey('logic_element.id'), name="jump_to_target_element_id", nullable=True)
+    _jump_to_target_element = orm.relationship("JumpToTarget")
+
+    __mapper_args__ = {
+        'polymorphic_on':_etype,
+        'polymorphic_identity':'EventModule'
+    }
+
+    def __init__(self, sequence_name, name):
+        self._sequence_name = sequence_name
+        self._name = name
+        self._list_commands = list()
+
+    @property
+    def id(self):
+        return self._id
+
+    @property
+    def name(self):
+        return self._name
+
+    @name.setter
+    def name(self, name):
+        self._name = name
+
+    @property
+    def sequence_name(self):
+        return self._sequence_name
+
+    @sequence_name.setter
+    def sequence_name(self, name):
+        self._sequence_name = name
+
+    @property
+    def list_commands(self):
+        list_commands = list()
+        for mc in self._list_commands:
+            list_commands.append((mc.command, mc.delay))
+        return list_commands
+
+    @property
+    def jump_to_target_element(self):
+        return self._jump_to_target_element
+
+    @jump_to_target_element.setter
+    def jump_to_target_element(self, element):
+        self._jump_to_target_element = element
+
+    def command_add(self, command_delay_tuple):
+        self._command_add(command_delay_tuple)
+        return True
+
+    def _command_add(self, command_delay_tuple):
+        if not isinstance(command_delay_tuple, tuple):
+            command_delay_tuple = (command_delay_tuple, 0)
+        tmp = EventCommand()
+        tmp.command = command_delay_tuple[0]
+        if command_delay_tuple[1] < 0:
+            return False
+        else:
+            tmp.delay = command_delay_tuple[1]
+        self._list_commands.append(tmp)
+        return True
+
+    def copy(self):
+        raise NotImplementedError()
+        #copy = EventModule(self.sequence_name, self.name)
+        #return self._copy_super_attributes(copy)
+
+    def _copy_super_attributes(self, copy):
+        for cmd in self.list_commands:
+            copy.command_add(cmd)
+        copy._jump_to_target_element = self._jump_to_target_element
+        return copy
+
+    @abc.abstractmethod
+    def check_event(self, data):
+        raise NotImplementedError()
+
+class KeyEventModule(EventModule):
+
+    _key_name = Column(String(50), name="key_name")
+    key_event = Column(String(50), name="key_event")
+
+    __mapper_args__ = {
+        'polymorphic_identity':'KeyEvent'
+    }
+
+    def __init__(self, key, key_event, name=None, sequence_name=None):
+        self.key = key
+        self._key_name = key.name
+        self.key_event = key_event
+        if not name:
+            name = "{}-{}".format(self._key_name, self.key_event)
+        super().__init__(sequence_name, name)
+
+    @orm.reconstructor
+    def __load_enum(self):
+        self.key = pynput.keyboard.Key[self._key_name]
+
+    def copy(self):
+        copy = KeyEventModule(
+            key = self.key,
+            key_event = self.key_event, 
+            name=self.name, 
+            sequence_name=self._sequence_name
+        )
+        return self._copy_super_attributes(copy)
+
+    def check_event(self, data):
+        if self.key == data[1]:
+            if self.key_event == data[2]:
+                return True
+        return False
+
+
+class ComEventModule(EventModule):
+
+    _device = Column(String(50), name="device")
+    _name_command = Column(String(50), name="name_command")  # get from dict
+    _match_regex = Column(String(100), name="match_regex")
+    _match_param = Column(String(100), name="match_param")  # param as list with strings
+    
+    __mapper_args__ = {
+        'polymorphic_identity':'ComEvent'
+    }     
+
+    def __init__(self, device, name_command, match, name=None, sequence_name=None):
+        self._sequence_name = None
+        self._name_command = name_command
+        self._device = device
+        if isinstance(match, list):
+            self._match_param = match
+            self._match_regex = None
+        elif isinstance(match, str):
+            self._match_param = None
+            self._match_regex = match
+        if not name:
+            name = "{}-{}".format(self._device, self._name_command)
+        super().__init__(sequence_name, name)
+
+    @property
+    def device(self):
+        return self._device
+
+    @property
+    def name_command(self):
+        return self._name_command
+
+    def get_param_list(self):
+        self.str_param = self._match_param[2: -2].split("', '")
+
+    def copy(self):
+        copy = ComEventModule(
+            device = self.device,
+            name_command = self.name_command,
+            match = None,
+            name=self.name, 
+            sequence_name=self._sequence_name
+        )
+        copy._match_param = self._match_param
+        copy._match_regex = self._match_regex
+        return self._copy_super_attributes(copy)
+
+    def check_event(self, data):
+        return False
+
+class ShowEvent(EventModule):
+
+    #play, pasue, jumpnext, next_module ....
+
+    __mapper_args__ = {
+        'polymorphic_identity':'ShowEvent'
+    }  
+
+
+class EventModuleManager(ManagerBase):
+
+    def __init__(self, session):
+        super().__init__(session)
+        self._elements = self._elements_get_all_from_db()
+        self.tmp_save_show_name = None
+
+    def element_add(self, element):
+        """add media element to database, if name alreadey exists append number
+        to the name
+        """
+        self.tmp_save_show_name = element._sequence_name
+        element.name = self._check_name_exists(element.name, obj=element)
+        self._elements.append(element)
+        self._session.add(element)
+        self._session.commit()
+        return True
+
+    def _elements_load_from_db(self):
+        return None
+
+    def _elements_load_from_db_show_name(self, show_name):
+        return self._session.query(EventModule)\
+            .filter(EventModule._sequence_name==show_name).first()
+    
+    def _elements_get_with_name_from_db(self, name, show_name=None):
+        if not show_name:
+            if self.tmp_save_show_name:
+                show_name = self.tmp_save_show_name
+            else:
+                # either show_name or tmp_save_show_name must be set
+                return False
+        return self._session.query(EventModule)\
+            .filter(
+                EventModule._sequence_name==show_name,
+                EventModule._name==name
+            ).first()
+
+    def _elements_get_by_id_from_db(self, id):
+        return self._session.query(EventModule)\
+            .filter(EventModule._id==id).first()
+
+    def _elements_get_all_from_db(self):
+        return self._session.query(EventModule).all()
+
 class Show():
     """SequenceObjectManager/PlaylistManager
 
@@ -999,6 +1292,9 @@ class Show():
     Chanhes are commited into the database instantly. Different shows, 
     specified by their name/sequence_name can be in the same project folder 
     (reusing, media and logic elements)
+
+    EventModules shal not be copied inside a show. They also cant be found by
+    name from within the ElementManager.
 
     Args:
         name                                 (str): name of the show
@@ -1011,7 +1307,7 @@ class Show():
 
     Attributes:
         current_pos                (int): 
-        sequence_name              (str): name of the show (sequece_name of all
+        sequence_name              (str): name of the show (sequence_name of all
             SequenceElements in sequence)
         sequence (List<SequenceElement>): Playlist list of all SequenceElements  
         session (sqlalchemy.orm.Session): database session
@@ -1027,7 +1323,9 @@ class Show():
         self._mm = MediaElementManager(self._session)
         self._lm = LogicElementManager(self._session)
         self._cm = CommandObjectManager(self._session)
-        self._sequence = list()  
+        self._em = EventModuleManager(self._session)
+        self._sequence = list()
+        self._event_list = list()
         self._current_pos = 0
         self.show_options = ShowOptions(self._session)
 
@@ -1048,16 +1346,34 @@ class Show():
         return sorted(self._sequence, key=lambda mod: mod.position)
 
     @property
+    def eventlist(self):
+        return sorted(self._event_list, key=lambda mod: mod._id)
+
+    @property
     def list_media(self):
+        """list all media elements saved in db (not associated with shows)"""
         return self._mm.elements
 
     @property
     def list_logic(self):
+        """list all logic elements saved in db (not associated with shows)"""
         return self._lm.elements
 
     @property
+    def list_jump_to_target(self):
+        """as list_logic but list only jumptoelment elements"""
+        return [x for x in self._lm.elements if isinstance(x, JumpToTarget)]
+
+    @property
     def list_command(self):
+        """list all command objects saved in db (not associated with shows)"""
         return self._cm.elements
+
+    @property
+    def list_event(self):
+        """list all event modules saved in db from all shows 
+        (associated with shows)"""
+        return self._em.elements
 
     @property
     def module_current(self):
@@ -1127,6 +1443,7 @@ class Show():
             self.show_close()
             self._show_name = name
             self._module_load_from_db()
+            self._event_module_load_from_db()
             self._find_jumptotarget_elements()
             self._happened_event_queue = queue.Queue()
             return True
@@ -1144,6 +1461,12 @@ class Show():
             else:
                 self._session.rollback()
                 return False
+        for event_mod in self._event_list:
+            if self._event_module_copy(event_mod, new_show=name_new_show):
+                continue
+            else:
+                self._session.rollback()
+                return False
         self._session.commit()
         if current_show_save:
             self.show_load(current_show_save)
@@ -1152,19 +1475,19 @@ class Show():
     def show_rename(self, new_name, old_name=None):
         if not old_name:
             if not self._show_name:
-                return False  # error code: no show loaded and no name provided
+                return False, "error code: no show loaded and no name provided"
             old_name2 = self._show_name
         else:
             if old_name in self.show_list:
                 old_name2 = old_name
             else:
-                return False  # error code: show does not exist
+                return False, "error code: show does not exist"
         
         to_re_name = self._session.query(SequenceModule)\
             .filter(SequenceModule._sequence_name==old_name2).all()
 
         for mod in to_re_name:
-            mod.rename_sequence(new_name)
+            mod.sequece_name = new_name
         self._session.commit()
 
         if not old_name2:
@@ -1298,6 +1621,24 @@ class Show():
         module = self._module_get_at_pos(pos)
         return self._module_remove_all_commands(module)
 
+    def event_module_add(self, event_module):
+        event_module.sequence_name = self.show_name
+        if self._em.element_add(event_module):
+            self._event_list.append(event_module)
+            return True
+        return False
+
+    def event_module_copy(self, module, new_name):
+        new_mod = module.copy()
+        new_mod.name = new_name
+        return self.event_module_add(new_mod)
+
+    def event_module_rename(self, module, new_name):
+        return self._event_module_rename(module, new_name)
+
+    def event_module_delete(self, module):
+        return self._event_module_remove(module)
+
     def module_rename(self, pos, new_name):
         module = self._module_get_at_pos(pos)
         return self._module_rename(module, new_name)
@@ -1308,6 +1649,9 @@ class Show():
         else:
             return self._lm.element_rename(module.logic_element, new_name)
         # manager will commit
+
+    def _event_module_rename(self, module, new_name):
+        return self._em.element_rename(module, new_name)
 
     def _module_append_to_pos(self, module, pos=None):
         """append element at given position"""
@@ -1321,18 +1665,36 @@ class Show():
         else:
             return True
 
-    def _module_copy(self, module, new_name=None, new_show=None, positioning=True):
-        module.make_transient(new_sequence_name=new_show)    
+    def _module_copy(self, module, new_show=None, positioning=True):
+        mod_new = module.copy()
+        if new_show:
+            mod_new.sequence_name = new_show
         if not positioning:
-            self._session.add(module)
+            self._session.add(mod_new)
             self._session.commit()
         else:
-            module.position = None
-        return module
+            mod_new.position = None
+        return mod_new
+
+    def _event_module_copy(self, module, new_name=None, new_show=None):
+        new_module = module.copy()
+        if new_name:
+            new_module.name = new_name
+        if new_show:
+            new_module.sequence_name = new_show
+            self._session.add(new_module)
+            self._session.commit()
+        return new_module
 
     def _module_remove(self, module):
         self._module_change_position_end(module)
         self._sequence.remove(module)
+        self._session.delete(module)
+        self._session.commit()
+        return True
+
+    def _event_module_remove(self, module):
+        self._event_list.remove(module)
         self._session.delete(module)
         self._session.commit()
         return True
@@ -1360,6 +1722,11 @@ class Show():
         """load show from database"""
         self._sequence = self._session.query(SequenceModule).\
             filter(SequenceModule._sequence_name==self._show_name).all()
+
+    def _event_module_load_from_db(self):
+        """load show from database"""
+        self._event_list = self._session.query(EventModule).\
+            filter(EventModule._sequence_name==self._show_name).all()
 
     def _module_get_with_name(self, name):
         for seqm in self._sequence:
