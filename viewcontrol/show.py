@@ -87,12 +87,12 @@ class ShowOptions():
 class ShowOptionDevice(Base):
     __tablename__ = 'show_option_device'
     _id = Column(Integer, primary_key=True, name='id')
-    _name = Column(String(50))
+    _name = Column(String(50), name="name")
     _ip_address = Column(String(15), name="ip_address")
     _port = Column(Integer, name="port")
     _enabled = Column(Boolean, default=False, name="enabled")
     _protocol = Column(String(50), name="protocol")
-    _dev_class = Column(String(100))
+    _dev_class = Column(String(100), name="dev_class")
 
     @property
     def name(self):
@@ -751,9 +751,9 @@ class SequenceModule(Base):
     
     __tablename__ = 'sequence_module'
     _id = Column(Integer, primary_key=True, name="id")
-    _sequence_name = Column(String(50), nullable=True)
-    _position = Column(Integer)
-    _time = Column(Float)
+    _sequence_name = Column(String(50), nullable=True, name="sequence_name")
+    _position = Column(Integer, name="position")
+    _time = Column(Float, name="time")
     _deleted = Column(Boolean, name="deleted", default=False)
     _logic_element_id = Column(Integer, 
         ForeignKey('logic_element.id'), name="logic_element_id")
@@ -1060,7 +1060,7 @@ class EventModule(Base):
     """
     __tablename__ = 'event_module'
     _id = Column(Integer, primary_key=True, name="id")
-    _sequence_name = Column(String(50), nullable=True)
+    _sequence_name = Column(String(50), nullable=True, name="sequence_name")
     _name = Column(String(50), name="name")
     _etype = Column(String(10), name="etype")
     _list_commands = orm.relationship("EventCommand", back_populates="event_module", cascade="all, delete-orphan")

@@ -1,0 +1,1 @@
+eralchemy==1.2.10  # requires: graphviz libgraphviz-dev
