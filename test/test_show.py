@@ -231,7 +231,7 @@ class TestShowPlaylist(unittest.TestCase):
         self.assertTrue(self.show.event_module_add(em1))
         self.assertEqual(len(self.show.list_event), 1)
         self.assertEqual(self.show.list_event[0], em1)
-        em2 = show.ComEventModule("DenonDN500BD", "fuu", "bar", name="EOM (End of Movie)")
+        em2 = show.ComEventModule("DenonDN500BD", "Status", "Play", name="EOM (End of Movie)")
         em2.command_add(self.show.list_command[0])
         self.assertTrue(self.show.event_module_add(em2))
         self.assertEqual(len(self.show.eventlist), 2)

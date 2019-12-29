@@ -311,6 +311,7 @@ class Barrier(LogicElement):
         'polymorphic_identity':'Barrier'
     }
 
+
 class BarrierEvent(Barrier):
 
     __mapper_args__ = {
@@ -1143,6 +1144,7 @@ class EventModule(Base):
     def check_event(self, data):
         raise NotImplementedError()
 
+
 class KeyEventModule(EventModule):
 
     _key_name = Column(String(50), name="key_name")
@@ -1186,7 +1188,8 @@ class ComEventModule(EventModule):
     _name_command = Column(String(50), name="name_command")  # get from dict
     _match_regex = Column(String(100), name="match_regex")
     _match_param = Column(String(100), name="match_param")  # param as list with strings
-    
+    _event_source_type = Column(String(20), name="event_source_type")  # to be implemented
+
     __mapper_args__ = {
         'polymorphic_identity':'ComEvent'
     }     
@@ -1196,7 +1199,7 @@ class ComEventModule(EventModule):
         self._name_command = name_command
         self._device = device
         if isinstance(match, list):
-            self._match_param = match
+            self._match_param = str(match)
             self._match_regex = None
         elif isinstance(match, str):
             self._match_param = None
@@ -1230,6 +1233,7 @@ class ComEventModule(EventModule):
 
     def check_event(self, data):
         return False
+
 
 class ShowEvent(EventModule):
 
@@ -1285,6 +1289,7 @@ class EventModuleManager(ManagerBase):
     def _elements_get_all_from_db(self):
         return self._session.query(EventModule).all()
 
+
 class Show():
     """SequenceObjectManager/PlaylistManager
 
@@ -1336,6 +1341,10 @@ class Show():
             if e.logic_element:
                 if isinstance(e.logic_element, JumpToTarget):
                     self.jumptotarget_elements.append(e)
+
+    @property
+    def connected_datbase(self):
+        return self._session
 
     @property
     def show_project_folder(self):
@@ -1784,9 +1793,9 @@ class Show():
 
         #loop through queue until empty
         while not self._happened_event_queue.empty():
-            event = self._happened_event_queue.get()
+            jtte = self._happened_event_queue.get()
             for e in self.jumptotarget_elements:
-                if e.logic_element.name_event in event:
+                if e.logic_element.id == jtte.id:
                     self._current_pos = e.position
 
         #increase current position and return new current element
@@ -1797,15 +1806,18 @@ class Show():
             return SequenceModule.viewcontroll_placeholder()
 
     @staticmethod
-    def create_session(project_folder):
+    def create_session(project_folder, check_same_thread=False):
         """create a session and the db-file if not exist"""
         if not os.path.exists(project_folder):
             if not os.path.exists(project_folder):
                 os.makedirs(project_folder)
-        db_file = os.path.join(project_folder, 'vcproject.db3')
+        if check_same_thread:
+            db_file = os.path.join(project_folder, 'vcproject.db3')
+        else:
+            db_file = os.path.join(project_folder, 'vcproject.db3') + "?check_same_thread=False"
         engine = 'sqlite:///'+db_file
         some_engine = sqlalchemy.create_engine(engine)
         Base.metadata.create_all(some_engine, 
-            Base.metadata.tables.values(),checkfirst=True)
+            Base.metadata.tables.values(), checkfirst=True)
         Session = orm.sessionmaker(bind=some_engine)
         return Session()

@@ -1,6 +1,8 @@
 # viewcontrol
 Lightweight program for playback of various image media formats with seamless transitions and control via Ethernet connected devices and DMX.
 
+This software is currently being developed to create a fully automatic cinema-like playback, running on a single board computer and controlling devices connected via Ethernet.
+
 ## Quick Start
 ### Install
  1) `$ git clone https://github.com/igfilm/viewcontrol.git && cd viewcontrol`
@@ -15,6 +17,7 @@ A working show can be produced by running `$ python3 test/test_show.py`. The tes
 
 ## Show Entity Relationship Diagram
 ![Show ERD](https://github.com/igfilm/viewcontrol/blob/master/doc/erd.png "Show ERD")
+![Show ERD](https://github.com/igfilm/viewcontrol/blob/feature_event_system/doc/erd.png "Show ERD")
 
 ## Suported Devices
 

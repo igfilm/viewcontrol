@@ -19,6 +19,7 @@ import mpv
 
 import viewcontrol.show as show
 from viewcontrol.remotecontrol.processcmd import ProcessCmd, ThreadCmd
+from viewcontrol.remotecontrol.threadcommunicationbase import ComPackage
 from viewcontrol.playback.processmpv import ProcessMpv, ThreadMpv
 
 from viewcontrol.version import __version__ as package_version
@@ -26,7 +27,7 @@ from viewcontrol.version import __version__ as package_version
 class ViewControl(object):
 
     def __init__(self, args):
-
+        print(args)
         parser = argparse.ArgumentParser(
             prog = "viewcontrol",
             description='media playback',
@@ -117,35 +118,43 @@ class ViewControl(object):
 
         # setup event mpv
         self.sig_mpv_prop = signal("mpv_prop_chaged")
-        self.lm = threading.Thread(
+        self.t_listen_process_mpv = threading.Thread(
             target=self.thread_listen_process_mpv,
             name='listen_process_mpv',
             daemon=True
         )
-        self.lm.start()
+        self.t_listen_process_mpv.start()
         self.sig_mpv_prop.connect(self.subscr_listen_process_mpv)
 
         # setup event cmd
         self.sig_cmd_prop = signal("cmd_prop_chaged")
-        self.lm = threading.Thread(
+        self.t_listen_process_cmd = threading.Thread(
             target=self.thread_listen_process_cmd,
             name='listen_process_cmd',
             daemon=True
         )
-        self.lm.start()
+        self.t_listen_process_cmd.start()
         self.sig_cmd_prop.connect(self.subscr_listen_process_cmd)
 
         self.sig_mpv_time = signal("mpv_time")
-
         self.sig_mpv_time_remain = signal("mpv_time_remain")
         self.sig_mpv_time_remain.connect(self.subscr_time)
 
         self.sig_cmd_command = signal("cmd_command")
         self.sig_cmd_command.connect(self.send_command)
 
+        self.event_queue = queue.Queue()
+        self.t_event_system = threading.Thread(
+            target=self.thread_event_system,
+            name='event_system',
+            daemon=True
+        )
+        self.t_event_system.start()
+
         self.playlist = show.Show(
             project_folder=self.argpars_result.project_folder, 
             content_aspect_ratio=self.argpars_result.content_aspect_ratio)
+        logging.info("Connected to database: {}".format(self.playlist.connected_datbase))
         self.playlist.show_load(self.argpars_result.playlist_name)
         self.logger.info("loaded Show: {}".format(self.playlist._show_name))
 
@@ -156,7 +165,7 @@ class ViewControl(object):
                     self.playlist.show_options.devices)
             
             self.process_mpv = ProcessMpv(self.config_queue_logger,
-                    self.mpv_status_queue, 
+                    self.mpv_status_queue,
                     self.mpv_controll_queue,
                     self.argpars_result.screen)
         else:
@@ -279,6 +288,7 @@ class ViewControl(object):
                 self.logger.debug(data[1])
             else:
                 self.sig_mpv_prop.send(data)
+                #self.event_queue.put(data)
 
     def subscr_listen_process_cmd(self, msg):
         """Subscriber to Event 'cmd_prop_chaged' for logging."""
@@ -289,25 +299,49 @@ class ViewControl(object):
         while True:
             data = self.cmd_status_queue.get(block=True)
             self.sig_cmd_prop.send(data)
+            self.event_queue.put(data)
+
+    def thread_event_system(self):
+        """fuubar"""
+        while True:
+            data = self.event_queue.get(block=True)
+            etype = None
+            if isinstance(data, ComPackage):  # ComEvent
+                etype = show.ComEventModule
+            elif isinstance(data, tuple) and data[0]=="KeyEvent":  # KeyEvent
+                etype = show.KeyEventModule
+            else:
+                print("fuubar")
+            for mod in self.playlist.eventlist:
+                if isinstance(mod, etype):
+                    if mod.check_event(data):
+                        for cmd_tpl in mod.list_commands:
+                            self.sig_cmd_command.send(cmd_tpl)
+                        if mod.jump_to_target_element:
+                            self.playlist.notify(mod.jump_to_target_element)
+                        #send commads
+                        #notifie jump to element
 
     def on_press(self, key):
-        """key event on press"""
+        """key event on press
+        
+        TODO add move pause resume to event system
+        """
         try:
             self.logger.debug('alphanumeric key {0} pressed'.format(key))
         except AttributeError:
             self.logger.debug('special key {0} pressed'.format(key))
-        #self.sig_key_event.send(key)
+
         if key == keyboard.Key.page_down:
             self.player_pause()
         elif key == keyboard.Key.page_up:
             self.player_resume()
-        elif key == keyboard.Key.end:
-            self.playlist.notify("event_key_end")
-            #self.player_playpause()
+        
+        self.event_queue.put(("KeyEvent", key, "on_press"))
 
     def on_release(self, key):
         """key event on release"""
-        pass
+        self.event_queue.put(("KeyEvent", key, "on_release"))
 
     def handle_exception(self, exc_type, exc_value, exc_traceback):
         """exeption handler to log unhandled expetions in main thread"""
