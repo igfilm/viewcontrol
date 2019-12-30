@@ -7,6 +7,7 @@ import os
 import pkgutil
 import queue
 from shutil import copyfile
+import re
 
 import sqlalchemy
 from sqlalchemy import orm
@@ -23,6 +24,8 @@ from wand.color import Color
 from wand.drawing import Drawing
 
 import pynput
+
+from viewcontrol.remotecontrol.threadcommunicationbase import ComType
 
 Base = declarative_base()
 
@@ -1016,12 +1019,12 @@ class CommandObject(Base):
         if not self._cmd_parameter1:
             return ()
         elif self._cmd_parameter3:
-            return (int(self._cmd_parameter1), int(self._cmd_parameter2), 
-                int(self._cmd_parameter3))
+            return (self._cmd_parameter1, self._cmd_parameter2,
+                self._cmd_parameter3)
         elif self._cmd_parameter2:
-            return (int(self._cmd_parameter1), int(self._cmd_parameter2))
+            return (self._cmd_parameter1, self._cmd_parameter2)
         else:  # self.cmd_parameter1
-            return (int(self._cmd_parameter1),)
+            return (self._cmd_parameter1, )
 
     def set_parameters(self, *args):
         if len(args) > 0:
@@ -1129,6 +1132,7 @@ class EventModule(Base):
         self._list_commands.append(tmp)
         return True
 
+    @abc.abstractmethod
     def copy(self):
         raise NotImplementedError()
         #copy = EventModule(self.sequence_name, self.name)
@@ -1187,19 +1191,26 @@ class ComEventModule(EventModule):
     _device = Column(String(50), name="device")
     _name_command = Column(String(50), name="name_command")  # get from dict
     _match_regex = Column(String(100), name="match_regex")
-    _match_param = Column(String(100), name="match_param")  # param as list with strings
-    _event_source_type = Column(String(20), name="event_source_type")  # to be implemented
+    #_match_param = Column(String(100), name="match_param")  # param as list
+    # with strings
+    _match_param1 = Column(String(10), name="_match_param1")
+    _match_param2 = Column(String(10), name="_match_param2")
+    _match_param3 = Column(String(10), name="_match_param3")
+    _com_type = Column(Integer, name="com_type")  # to be
+    # implemented
 
     __mapper_args__ = {
         'polymorphic_identity':'ComEvent'
     }     
 
-    def __init__(self, device, name_command, match, name=None, sequence_name=None):
+    def __init__(self, device, com_type, name_command, match, name=None,
+                 sequence_name=None):
         self._sequence_name = None
-        self._name_command = name_command
         self._device = device
-        if isinstance(match, list):
-            self._match_param = str(match)
+        self._com_type = com_type.value  # type ComType
+        self._name_command = name_command
+        if isinstance(match, list) or isinstance(match, tuple):
+            self.match_parameters = match
             self._match_regex = None
         elif isinstance(match, str):
             self._match_param = None
@@ -1213,25 +1224,63 @@ class ComEventModule(EventModule):
         return self._device
 
     @property
+    def com_type(self):
+        return ComType(self._com_type)
+
+    @property
     def name_command(self):
         return self._name_command
 
-    def get_param_list(self):
-        self.str_param = self._match_param[2: -2].split("', '")
+    @property
+    def match_parameters(self):
+        if not self._match_param1:
+            return ()
+        elif self._match_param3:
+            return (self._match_param1, self._match_param2,
+                    self._match_param3)
+        elif self._match_param2:
+            return (self._match_param1, self._match_param2)
+        else:  # self.cmd_parameter1
+            return (self._match_param1,)
+
+    @match_parameters.setter
+    def match_parameters(self, *args):  # args, tuple or list
+        if len(args)==1:
+            if isinstance(args[0], list) or isinstance(args[0], tuple):
+                args = args[0]
+        if len(args) > 0:
+            self._match_param1 = args[0]
+        if len(args) > 1:
+            self._match_param2 = args[1]
+        if len(args) > 2:
+            self._match_param3 = args[2]
 
     def copy(self):
         copy = ComEventModule(
-            device = self.device,
-            name_command = self.name_command,
-            match = None,
+            device=self.device,
+            com_type=self.com_type,
+            name_command=self.name_command,
+            match=None,
             name=self.name, 
             sequence_name=self._sequence_name
         )
-        copy._match_param = self._match_param
+        copy._match_param1 = self._match_param1
+        copy._match_param2 = self._match_param2
+        copy._match_param3 = self._match_param3
         copy._match_regex = self._match_regex
         return self._copy_super_attributes(copy)
 
     def check_event(self, data):
+        if data.device == self._device:
+            if data.type == self.com_type:
+                if data.full_answer and self.match_parameters:
+                    if data.full_answer[0] == self._name_command:
+                        if list(self.match_parameters) == data.full_answer[1]:
+                            return True
+                elif self._match_regex:
+                    if re.fullmatch(self._match_regex,
+                                    data.recv_answer_string):
+                        return True
         return False
 
 

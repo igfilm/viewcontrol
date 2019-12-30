@@ -305,13 +305,12 @@ class ViewControl(object):
         """fuubar"""
         while True:
             data = self.event_queue.get(block=True)
-            etype = None
             if isinstance(data, ComPackage):  # ComEvent
                 etype = show.ComEventModule
-            elif isinstance(data, tuple) and data[0]=="KeyEvent":  # KeyEvent
+            elif isinstance(data, tuple) and data[0] == "KeyEvent":  # KeyEvent
                 etype = show.KeyEventModule
             else:
-                print("fuubar")
+                return
             for mod in self.playlist.eventlist:
                 if isinstance(mod, etype):
                     if mod.check_event(data):
@@ -319,8 +318,6 @@ class ViewControl(object):
                             self.sig_cmd_command.send(cmd_tpl)
                         if mod.jump_to_target_element:
                             self.playlist.notify(mod.jump_to_target_element)
-                        #send commads
-                        #notifie jump to element
 
     def on_press(self, key):
         """key event on press
