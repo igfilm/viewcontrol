@@ -1,29 +1,27 @@
 import abc
-import copy
-import inspect
 import importlib
-from numpy import array, arange
+import inspect
 import os
+import pickle
 import pkgutil
 import queue
-from shutil import copyfile
 import re
+from shutil import copyfile
 
+import pynput
 import sqlalchemy
-from sqlalchemy import orm
-from sqlalchemy import Column, Integer, String, Boolean, Time, ForeignKey, Float, Table
-from sqlalchemy.ext.declarative import declarative_base
-
-from moviepy.video.io.VideoFileClip import VideoFileClip
 from moviepy.video.VideoClip import ColorClip
 from moviepy.video.compositing.CompositeVideoClip import CompositeVideoClip
 from moviepy.video.fx.resize import resize
-
-from wand.image import Image
+from moviepy.video.io.VideoFileClip import VideoFileClip
+from numpy import array, arange
+from sqlalchemy import (Column, Integer, String, Boolean, ForeignKey,
+    Float, Binary)
+from sqlalchemy import orm
+from sqlalchemy.ext.declarative import declarative_base
 from wand.color import Color
 from wand.drawing import Drawing
-
-import pynput
+from wand.image import Image
 
 from viewcontrol.remotecontrol.threadcommunicationbase import ComType
 
@@ -979,21 +977,35 @@ class CommandObject(Base):
     """
     __tablename__ = 'command_object'
     _id = Column(Integer, primary_key=True, name="id")
-    #_parent_id = Column(Integer, 
-    #    ForeignKey('sequenceElements.id'), name="parent_id")
     _parents = orm.relationship("ModuleCommand", back_populates="command")
     _name = Column(String(50), name="name")
     _device = Column(String(50), name="device")
     _name_cmd = Column(String(50), name="name_cmd")
-    _cmd_parameter1 = Column(String(10), name="cmd_parameter1")
-    _cmd_parameter2 = Column(String(10), name="cmd_parameter2")
-    _cmd_parameter3 = Column(String(10), name="cmd_parameter3")
+    _cmd_parameter1_str = Column(String(20), name="cmd_parameter1_str")
+    _cmd_parameter2_str = Column(String(20), name="cmd_parameter2_str")
+    _cmd_parameter3_str = Column(String(20), name="cmd_parameter3_str")
+    _cmd_parameter1_pickled = Column(Binary(50), name="cmd_parameter1_pickled")
+    _cmd_parameter2_pickled = Column(Binary(50), name="cmd_parameter2_pickled")
+    _cmd_parameter3_pickled = Column(Binary(50), name="cmd_parameter3_pickled")
 
     def __init__(self, name, device, name_cmd, *args):
         self._name = name
         self._name_cmd = name_cmd
         self._device = device
-        self.set_parameters(*args)
+        if args:
+            self.set_parameters(*args)
+
+    @orm.reconstructor
+    def __init2__(self):
+        self._cmd_parameter1 = None
+        self._cmd_parameter2 = None
+        self._cmd_parameter3 = None
+        if self._cmd_parameter1_pickled:
+            self._cmd_parameter1 = pickle.loads(self._cmd_parameter1_pickled)
+        if self._cmd_parameter2_pickled:
+            self._cmd_parameter2 = pickle.loads(self._cmd_parameter2_pickled)
+        if self._cmd_parameter3_pickled:
+            self._cmd_parameter3 = pickle.loads(self._cmd_parameter3_pickled)
 
     @property
     def id(self):
@@ -1020,19 +1032,40 @@ class CommandObject(Base):
             return ()
         elif self._cmd_parameter3:
             return (self._cmd_parameter1, self._cmd_parameter2,
-                self._cmd_parameter3)
+                self._cmd_parameter3, )
         elif self._cmd_parameter2:
-            return (self._cmd_parameter1, self._cmd_parameter2)
+            return (self._cmd_parameter1, self._cmd_parameter2, )
         else:  # self.cmd_parameter1
             return (self._cmd_parameter1, )
+        # Note, brackets are tuple brackets
 
     def set_parameters(self, *args):
         if len(args) > 0:
-            self._cmd_parameter1 = args[0]
+            self.__write_param(1, args[0])
         if len(args) > 1:
-            self._cmd_parameter2 = args[1]
+            self.__write_param(2, args[1])
         if len(args) > 2:
-            self._cmd_parameter3 = args[2]
+            self.__write_param(3, args[2])
+
+    def __write_param(self, num, value):
+        if not value:
+            return None, None
+        pickled = pickle.dumps(value)
+        str_value = str(value)
+        if num == 1:
+            self._cmd_parameter1 = value
+            self._cmd_parameter1_pickled = pickled
+            self._cmd_parameter1_str = str_value
+        elif num == 2:
+            self._cmd_parameter2 = value
+            self._cmd_parameter2_pickled = pickled
+            self._cmd_parameter2_str = str_value
+        elif num == 3:
+            self._cmd_parameter3 = value
+            self._cmd_parameter3_pickled = pickled
+            self._cmd_parameter3_str = str_value
+        else:
+            raise IndexError("Only 3 parameters can be saved into db!")
 
     def __repr__(self):
         if self.id:
@@ -1191,11 +1224,9 @@ class ComEventModule(EventModule):
     _device = Column(String(50), name="device")
     _name_command = Column(String(50), name="name_command")  # get from dict
     _match_regex = Column(String(100), name="match_regex")
-    #_match_param = Column(String(100), name="match_param")  # param as list
-    # with strings
-    _match_param1 = Column(String(10), name="_match_param1")
-    _match_param2 = Column(String(10), name="_match_param2")
-    _match_param3 = Column(String(10), name="_match_param3")
+    _match_param1 = Column(String(20), name="_match_param1")
+    _match_param2 = Column(String(20), name="_match_param2")
+    _match_param3 = Column(String(20), name="_match_param3")
     _com_type = Column(Integer, name="com_type")  # to be
     # implemented
 
