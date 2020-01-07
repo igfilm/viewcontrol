@@ -16,7 +16,7 @@ from moviepy.video.fx.resize import resize
 from moviepy.video.io.VideoFileClip import VideoFileClip
 from numpy import array, arange
 from sqlalchemy import (Column, Integer, String, Boolean, ForeignKey,
-    Float, Binary)
+                        Float, Binary)
 from sqlalchemy import orm
 from sqlalchemy.ext.declarative import declarative_base
 from wand.color import Color
@@ -34,13 +34,31 @@ Elements and Objects are not connected to a given show, and can be reused in
 all shows, changing them will track the traces through all shows.
 """
 
-class ShowOptions():
+
+class ShowOptions:
+    """Option object for all show specific options.
+
+    Holds all options of the loaded shows. Including connection info
+    (ip-address, port, protocol) to known devices.
+
+    Loads all devices defined in remotecontrol subclasses with default
+    settings if not already in the device dictionary list. Which can
+    than be edited by the user.
+
+    """
 
     def __init__(self, session):
+        """Create a ViewControl object with the given options.
+
+        Args:
+            session (orm.session.Session): session object connected to
+                database file
+
+        """
         self._session = session
         self._devices = list()
         self._elements_load_from_db()
-        
+
         package = importlib.import_module("viewcontrol.remotecontrol")
         for _, modname, ispkg in pkgutil.iter_modules(package.__path__):
             if ispkg:
@@ -66,15 +84,37 @@ class ShowOptions():
         return device_dict
 
     def _add_device(self, device_class):
+        """add device to device dictionary
+
+        Adds a device to the device dictionary by parsing a subclass of
+        ThreadCommunicationBase to a ShowOptionDevice object.
+
+        Args:
+            device_class (ThreadCommunicationBase): class object device
+
+        """
         dev = ShowOptionDevice(device_class)
         self._devices.append(dev)
         self._session.add(dev)
         self._session.commit()
 
     def _elements_load_from_db(self):
+        """load device dictionary from database"""
         self._devices.extend(self._session.query(ShowOptionDevice).all())
 
     def set_device_property(self, device, enabled=None, connection=None):
+        """sets connection property of a device in device dictionary
+
+        Args:
+            device    (ShowOptionDevice):
+            enabled               (bool): True, enable device
+            connection (tuple(str, int)): ip-address as string in the
+                form XXX.XXX.XXX.XXX and port as int
+
+        Returns:
+            bool: True for success, False otherwise.
+
+        """
         if not enabled and not connection:
             return False
         if enabled:
@@ -86,6 +126,13 @@ class ShowOptions():
 
 
 class ShowOptionDevice(Base):
+    """Option object for single device
+
+    Holds connection and enabled options of for a single device defined
+    in remotecontrol.
+
+    """
+
     __tablename__ = 'show_option_device'
     _id = Column(Integer, primary_key=True, name='id')
     _name = Column(String(50), name="name")
@@ -121,24 +168,35 @@ class ShowOptionDevice(Base):
         return self._dev_class
 
     def __init__(self, device_class):
+        """Create a ShowOptionDevice object with the given options.
+
+        Args:
+            device_class (ThreadCommunicationBase): class object device
+
+        """
         self._name = device_class.__name__
         self._protocol = device_class.mro()[0].__module__.split('.')[2]
         self._dev_class = str(device_class)
 
 
 class ManagerBase(abc.ABC):
-    """Manager basse class for all managers at runtime and in database.
+    """Base class for all managers at runtime and in database.
 
-    Args:
-        session (sqlalchemy.orm.Session): database session
+    Objects to be managed must have the attribute _name.
 
     Attributes:
-        session  (sqlalchemy.orm.Session): database session
-        elements     (Lits<MediaElemets>): list of active media elemets
+        session (sqlalchemy.orm.Session): database session
+        elements          (list<object>): list of all managed objects
 
     """
 
     def __init__(self, session):
+        """Create a ManagerBase object with the given options.
+
+        Args:
+            session  (sqlalchemy.orm.Session): database session
+
+        """
         self._session = session
         self._elements = []
         self._elements_load_from_db()
@@ -152,8 +210,13 @@ class ManagerBase(abc.ABC):
         return self._elements
 
     def element_add(self, element):
-        """add media element to database, if name alreadey exists append number
-        to the name
+        """add media element to database,
+
+        if name already exists append a number to the name
+
+        Args:
+            element (element): any object to be managed in derived class
+
         """
         element.name = self._check_name_exists(element.name, obj=element)
         self._elements.append(element)
@@ -162,24 +225,65 @@ class ManagerBase(abc.ABC):
         return True
 
     def element_delete(self, element):
+        """add media element to database,
+
+                if name already exists append a number to the name
+
+                Args:
+                    element (element): any object to be managed in derived class
+
+        """
         return False
 
     def element_rename(self, element, new_name, commit=True):
+        """rename name of element managed by manager
+
+        Args:
+            element           (object): object to be renamed
+            new_name             (str): new name for object
+            commit    (bool, optional): commits to database if True,
+                                        defaults to True
+
+        """
         element.name = self._check_name_exists(new_name, obj=element)
         if commit:
             self._session.commit()
         return True
 
     def element_get_with_name(self, name):
+        """returns element object with given name
+
+        Args:
+            name (str): name of string
+
+        Returns:
+            object: element with given name, None if no element exits
+
+        """
         for e in self._elements:
-            if e.name==name:
+            if e.name == name:
                 return e
         return None
 
     def _check_name_exists(self, name, num=1, obj=None):
-        """check if name already exists. If True, append a number if"""
+        """modify given name to be unique if not
+
+        Checks if name already exists. Returns the name unchanged if not in
+        database. Else add an number after the name to make it unique.
+        Increases the number when number already exists.
+
+        Args:
+            name (str): name to be checked
+            num  (int): number to try first, internal use in recursion
+            obj  (obj): object to be renamed, prohibits wrong renaming,
+                when object already exists and when copying.
+
+        Returns:
+            str: unique name in managed list
+
+        """
         if num > 1:
-            name='{}_{}'.format(name, num)
+            name = '{}_{}'.format(name, num)
         name_exists = self._elements_get_with_name_from_db(name)
         if name_exists:
             if obj and obj.id == name_exists.id:
@@ -188,27 +292,50 @@ class ManagerBase(abc.ABC):
         return name
 
     def _elements_load_from_db(self):
+        """load elements from database"""
         self.elements.extend(self._elements_get_all_from_db())
 
     @abc.abstractmethod
     def _elements_get_with_name_from_db(self, name):
+        """returns all elements with given name
+
+        Args:
+            name (str): name of object to be loaded
+
+        Returns:
+            object: object with given name
+
+        """
         pass
 
     @abc.abstractmethod
     def _elements_get_by_id_from_db(self, id):
+        """returns all elements with given name
+
+        Args:
+            id (int): id of object to be loaded
+
+        Returns:
+            object: object with given id
+
+        """
         pass
 
     @abc.abstractmethod
     def _elements_get_all_from_db(self):
+        """returns all elements from database
+
+        Returns:
+            object: object with given id
+        """
         pass
 
 
 class LogicElement(Base):
     """Base class for Logic Elements.
-    
-    Args:
-        name (str): name of the logic element
-        key  (int): unique key of logic element (important for loops)
+
+    Logic elements control the flow of the media elements. They are
+    displayed and edited like media elements in Sequence Modules.
 
     Attributes:
         name    (str): name of the logic element
@@ -224,11 +351,17 @@ class LogicElement(Base):
     _etype = Column(String(20), name="etype")
 
     __mapper_args__ = {
-        'polymorphic_on':_etype,
-        'polymorphic_identity':'LogicElement'
+        'polymorphic_on': _etype,
+        'polymorphic_identity': 'LogicElement'
     }
 
     def __init__(self, name, key):
+        """Create a LogicElement object with the given options.
+
+        Args:
+            name (str): name of the logic element
+            key  (int): unique key of logic element (important for loops)
+        """
         self.name = name
         self._key = key
 
@@ -422,7 +555,7 @@ class MediaElement(Base):
         if ratio in ['w', 'widescreen', '16:9']:
             cls.content_aspect_ratio = 'widescreen'
         else:
-            cls.content_aspect_ratio = 'cinescope' 
+            cls.content_aspect_ratio = 'cinescope'
 
     @staticmethod
     def _create_abs_filepath(abs_source, mid, extension, num=1):
@@ -443,7 +576,7 @@ class MediaElement(Base):
                 abs_source, mid, extension, num=num+1)
         else:
             return target_file, \
-                os.path.relpath(target_file, start=MediaElement.project_path)  
+                os.path.relpath(target_file, start=MediaElement.project_path)
 
     @property
     def id(self):
@@ -463,7 +596,7 @@ class MediaElement(Base):
             return os.path.join(MediaElement.project_path, self._file_path_w)
         else:
             return os.path.join(MediaElement.project_path, self._file_path_c)
-    
+
 
     def __init__(self, name, file_path_w, file_path_c):
         self._name = name
@@ -494,12 +627,12 @@ class VideoElement(MediaElement):
     }
 
     def __init__(self, name, file_path, t_start=0, t_end=None):
-        
+
         adst_c, rdst_c = \
             MediaElement._create_abs_filepath(file_path, "_c", ".mp4")
-        dur, car = self._insert_video(file_path, adst_c, 
-            cinescope=True, 
-            t_start=t_start, 
+        dur, car = self._insert_video(file_path, adst_c,
+            cinescope=True,
+            t_start=t_start,
             t_end=t_end)
         self._duration = dur
         content_aspect_ratio = car
@@ -509,10 +642,10 @@ class VideoElement(MediaElement):
         else:
             adst_w, rdst_w = \
                 MediaElement._create_abs_filepath(file_path, "_w", ".mp4")
-            self._insert_video(file_path, adst_w, 
-                content_aspect=content_aspect_ratio, 
-                cinescope=False, 
-                t_start=t_start, 
+            self._insert_video(file_path, adst_w,
+                content_aspect=content_aspect_ratio,
+                cinescope=False,
+                t_start=t_start,
                 t_end=t_end)
         super().__init__(name, rdst_w, rdst_c)
 
@@ -520,12 +653,12 @@ class VideoElement(MediaElement):
     def duration(self):
         return self._duration
 
-    def _insert_video(self, 
-            path_scr, 
-            path_dst, 
-            content_aspect=None, 
-            cinescope=True, 
-            t_start=0, 
+    def _insert_video(self,
+            path_scr,
+            path_dst,
+            content_aspect=None,
+            cinescope=True,
+            t_start=0,
             t_end=None):
         """convert source file and save it in project directory"""
         if MediaElement._skip_high_workload_functions:
@@ -556,7 +689,7 @@ class VideoElement(MediaElement):
         w = []
         for t in arange(0,video_file_clip.duration,sample_time_step):
             frame=video_file_clip.get_frame(t)
-            
+
             w.append(frame[[int(vfc.h*.125), int(vfc.h*.5), int(vfc.h*.875)], 0:vfc.w].mean(axis=2).mean(axis=1))
         w=array(w)
         wm = w.mean(axis=0)
@@ -578,8 +711,8 @@ class TextElement(MediaElement):
 
     __mapper_args__ = {
         'polymorphic_identity':'TextElement'
-    }         
-        
+    }
+
     def __init__(self, name, text):
         if name[0] != '~':
             name = '~' + name
@@ -603,7 +736,7 @@ class TextElement(MediaElement):
         if MediaElement._skip_high_workload_functions:
             open(path_dst, 'a').close()
             return
-        
+
         with Drawing() as draw:
             with Image(width=1920, height=1080, background=Color("black")) as image:
                 #draw.font = 'wandtests/assets/League_Gothic.otf'
@@ -613,7 +746,7 @@ class TextElement(MediaElement):
                 draw.text_alignment = 'center'
                 draw.text(int(image.width / 2), int(image.height / 2), text)
                 draw(image)
-                image.save(filename=path_dst) 
+                image.save(filename=path_dst)
 
 
 class StillElement(MediaElement):
@@ -629,8 +762,8 @@ class StillElement(MediaElement):
 
     __mapper_args__ = {
         'polymorphic_identity':'StillElement'
-    }         
-        
+    }
+
     def __init__(self, name, file_path):
         #TODO add handling for gifs if possible
         _, file_extension = os.path.splitext(file_path)
@@ -641,7 +774,7 @@ class StillElement(MediaElement):
         StillElement._insert_image(file_path, adst_w , False)
         StillElement._insert_image(file_path, adst_c, True)
         super().__init__(name, rdst_w, rdst_c)
-    
+
 
     @staticmethod
     def _insert_image(path_scr, path_dst, cinescope):
@@ -652,7 +785,7 @@ class StillElement(MediaElement):
         if MediaElement._skip_high_workload_functions:
             open(path_dst, 'a').close()
             return
-        
+
         if cinescope:
             screesize =  (1920, 810)
         else:
@@ -666,7 +799,7 @@ class StillElement(MediaElement):
             b = screesize[1]/tmp_scr.height
             scale = min(a, b)
             if max_upscale and scale > max_upscale:
-                scale = max_upscale 
+                scale = max_upscale
             s_size = (int(tmp_scr.width * scale), int(tmp_scr.height * scale))
 
             if tmp_scr.mimetype == "application/pdf":
@@ -677,17 +810,17 @@ class StillElement(MediaElement):
 
         with Image(filename=path_scr, resolution=res) as scr:
             scr.colorspace = 'rgb'
-            scr.format = 'jpeg'            
+            scr.format = 'jpeg'
 
             if not scr.mimetype == "image/gif":
-                with Image(width=1920, height=1080, background=Color("black")) as dst:   
+                with Image(width=1920, height=1080, background=Color("black")) as dst:
                     if not scale == 1:
                         scr.scale(*s_size)
                         #img.resize(*s_size)
                     offset_width = int((dst.width-scr.width)/2)
                     offset_height = int((dst.height-scr.height)/2)
                     dst.composite(operator='over', left=offset_width, top=offset_height, image=scr)
-                    dst.save(filename=path_dst)   
+                    dst.save(filename=path_dst)
             else:
                 raise Exception("Gifs are not allowed atm")
 
@@ -750,20 +883,20 @@ class SequenceModule(Base):
         media_element
 
     """
-    
+
     __tablename__ = 'sequence_module'
     _id = Column(Integer, primary_key=True, name="id")
     _sequence_name = Column(String(50), nullable=True, name="sequence_name")
     _position = Column(Integer, name="position")
     _time = Column(Float, name="time")
     _deleted = Column(Boolean, name="deleted", default=False)
-    _logic_element_id = Column(Integer, 
+    _logic_element_id = Column(Integer,
         ForeignKey('logic_element.id'), name="logic_element_id")
-    _logic_element = orm.relationship("LogicElement", 
+    _logic_element = orm.relationship("LogicElement",
         foreign_keys=[_logic_element_id])
-    _media_element_id = Column(Integer, 
+    _media_element_id = Column(Integer,
         ForeignKey('media_element.id'), name="media_element_id")
-    _media_element = orm.relationship("MediaElement", 
+    _media_element = orm.relationship("MediaElement",
         foreign_keys=[_media_element_id])
     _list_commands = orm.relationship("ModuleCommand", back_populates="sequence_module", cascade="all, delete-orphan")
 
@@ -1206,8 +1339,8 @@ class KeyEventModule(EventModule):
     def copy(self):
         copy = KeyEventModule(
             key = self.key,
-            key_event = self.key_event, 
-            name=self.name, 
+            key_event = self.key_event,
+            name=self.name,
             sequence_name=self._sequence_name
         )
         return self._copy_super_attributes(copy)
@@ -1232,7 +1365,7 @@ class ComEventModule(EventModule):
 
     __mapper_args__ = {
         'polymorphic_identity':'ComEvent'
-    }     
+    }
 
     def __init__(self, device, com_type, name_command, match, name=None,
                  sequence_name=None):
@@ -1292,7 +1425,7 @@ class ComEventModule(EventModule):
             com_type=self.com_type,
             name_command=self.name_command,
             match=None,
-            name=self.name, 
+            name=self.name,
             sequence_name=self._sequence_name
         )
         copy._match_param1 = self._match_param1
@@ -1321,7 +1454,7 @@ class ShowEvent(EventModule):
 
     __mapper_args__ = {
         'polymorphic_identity':'ShowEvent'
-    }  
+    }
 
 
 class EventModuleManager(ManagerBase):
@@ -1348,7 +1481,7 @@ class EventModuleManager(ManagerBase):
     def _elements_load_from_db_show_name(self, show_name):
         return self._session.query(EventModule)\
             .filter(EventModule._sequence_name==show_name).first()
-    
+
     def _elements_get_with_name_from_db(self, name, show_name=None):
         if not show_name:
             if self.tmp_save_show_name:
@@ -1398,10 +1531,10 @@ class Show():
         session (sqlalchemy.orm.Session): database session
 
     """
-    
+
     def __init__(self, project_folder, content_aspect_ratio='c'):
         self._show_name = None
-        self._show_project_folder = os.path.expanduser(project_folder) 
+        self._show_project_folder = os.path.expanduser(project_folder)
         self._session = Show.create_session(self._show_project_folder)
         MediaElement.set_project_path(self._show_project_folder)
         MediaElement.set_content_aspect_ratio(content_aspect_ratio)
@@ -1477,9 +1610,9 @@ class Show():
                         if isinstance(s.logic_element, LoopStart) \
                             and s.logic_element.key == obj.logic_element.key:
                             self._current_pos = s.position
-                            break                  
+                            break
                     obj.logic_element.counter = obj.logic_element.counter + 1
-            
+
             return self.next()
         else:
             if os.path.exists(obj.media_element.file_path):
@@ -1571,7 +1704,7 @@ class Show():
                 old_name2 = old_name
             else:
                 return False, "error code: show does not exist"
-        
+
         to_re_name = self._session.query(SequenceModule)\
             .filter(SequenceModule._sequence_name==old_name2).all()
 
@@ -1582,7 +1715,7 @@ class Show():
         if not old_name2:
             self.show.load(new_name)
         return True
-        
+
 
     def show_close(self):
         self._sequence = list()
@@ -1599,7 +1732,7 @@ class Show():
             del_name = name
 
         if del_name in self.show_list:
-            
+
             to_delte = self._session.query(SequenceModule)\
                 .filter(SequenceModule._sequence_name==del_name).all()
             for mod in to_delte:
@@ -1611,7 +1744,7 @@ class Show():
             return True
         else:
             return False  # error code: name does not exist
-        
+
     def _check_show_name_exists(self, name, num=1):
         """check if name already exists. If True, append a number if"""
         if num > 1:
@@ -1621,7 +1754,7 @@ class Show():
         return name
 
     ##### module methods #####
-    
+
     def _module_add(self, element, pos=None, time=None, commands_delay_tuple=[]):
         """adds a module to playlist at given pos or at end when pos=None"""
         if not self._show_name:
@@ -1631,7 +1764,7 @@ class Show():
                 self._mm.element_add(element)
             else:
                 self._lm.element_add(element)
-        sm = SequenceModule(self._show_name, None, 
+        sm = SequenceModule(self._show_name, None,
             element=element, time=time)
         self._module_add_command(sm, commands_delay_tuple)
         return self._module_append_to_pos(sm, pos)
@@ -1680,7 +1813,7 @@ class Show():
             return self._module_add(l_end, pos=pos+1)
         else:
             return self._module_add(l_end, pos=pos)
-    
+
     #def add_empty_module(self, pos=None):
     #    """add a empty module without any elements"""
     #    self.add_module(None, pos)
@@ -1804,7 +1937,7 @@ class Show():
 
         self._module_get_at_pos(next_pos).position = cur_pos
         module.position = next_pos
-        
+
         return self._module_change_position(module, new_pos)
 
     def _module_load_from_db(self):
@@ -1833,7 +1966,7 @@ class Show():
             if s.position == position:
                 return s
         raise Exception("Position '{}' does not exist.".format(position))
-    
+
     def _module_text_change_text(self, module, new_text):
         module.media_element.text = new_text
         return True
@@ -1897,7 +2030,7 @@ class Show():
             db_file = os.path.join(project_folder, 'vcproject.db3') + "?check_same_thread=False"
         engine = 'sqlite:///'+db_file
         some_engine = sqlalchemy.create_engine(engine)
-        Base.metadata.create_all(some_engine, 
+        Base.metadata.create_all(some_engine,
             Base.metadata.tables.values(), checkfirst=True)
         Session = orm.sessionmaker(bind=some_engine)
         return Session()
