@@ -1,0 +1,9 @@
+*) Extract Docstring
+*) Additional GUI Functionality
+    - change position of elements
+    - delete shows
+    - delete elements
+    - Add Elements (forms etc.)
+    - Preview of currently active scene
+    - get status of connected devices
+    - logs
