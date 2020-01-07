@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <link rel="stylesheet" href="{{ url_for('.static', filename='css/bootstrap.min.css') }}">
+    <script src="{{ url_for('.static', filename='js/bootstrap.min.js') }}"></script>
+</head>
+
+<body>
+    <nav class="nav navbar-expand-lg navbar-dark bg-dark">
+        <ul class="navbar-nav col-xs-4 mr-auto">
+            <li class="nav-item"> <a class="nav-link navbar-brand active" href="{{ url_for('frontend.index') }}"><span
+                        class="fa fa-home">Viewcontrol</span></a></li>
+            <li class="nav-item"><a href="" class="nav-item nav-link">Linnk</a></li>
+            <li class="nav-item"><a href="" class="nav-item nav-link">Linnk</a></li>
+        </ul>
+    </nav>
+    <div class="container">
+        {% with messages = get_flashed_messages() %}
+        {% if messages %}
+        {% for message in messages %}
+        <div class="alert alert-info" role="alert">{{ message }}</div>
+        {% endfor %}
+        {% endif %}
+        {% endwith %}
+        {% block content %}
+        {% endblock %}
+    </div>
+</body>
+
+</html>
