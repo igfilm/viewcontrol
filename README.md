@@ -9,11 +9,14 @@ This software is currently being developed to create a fully automatic cinema-li
  2) `$ python3 -m venv .venv && source .venv/bin/activate`, optional
  3) `$ pip install -r requirements.txt`
 
-### Run
+### Run Terminal Application
 1) `$ source .venv/bin/activate`, optional
 2) `$ python3 -m viewcontrol <project folder> <options>`
 
 A working show can be produced by running `$ python3 test/test_show.py`. The test folder 'testing' is not deleted.
+
+### Run Application with Gui
+1) `$ flask run`
 
 ## Show Entity Relationship Diagram
 ![Show ERD](https://github.com/igfilm/viewcontrol/blob/master/doc/erd.png "Show ERD")
