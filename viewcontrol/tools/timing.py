@@ -1,8 +1,8 @@
 from threading import Timer
 import time
 
-class RenewableTimer():
 
+class RenewableTimer:
     def __init__(self, interval, function, *args, **kwargs):
         self.interval = interval
         self.function = function
@@ -19,7 +19,7 @@ class RenewableTimer():
         self.start_time = time.time()
         self.timer_runnig = True
         self.timer.start()
-        
+
     def pause(self):
         self.cancel_time = time.time()
         self.timer_runnig = False
@@ -32,7 +32,7 @@ class RenewableTimer():
         self.start()
 
     @property
-    def actual_time (self):
+    def actual_time(self):
         if not self.timer or not self.timer.isAlive:
             return None
         elif self.timer_runnig:

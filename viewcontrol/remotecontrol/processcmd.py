@@ -21,19 +21,24 @@ import viewcontrol.tools.timing as timing
 
 
 class ProcessCmd(multiprocessing.Process):
-    
-    def __init__(self, logger_config, queue_status, queue_comand, device_options, **kwargs):
-        super().__init__(name='ProcessCmd', **kwargs)
-        self._dummy = CommandProcess(logger_config, queue_status, queue_comand, device_options, self.name)
+    def __init__(
+        self, logger_config, queue_status, queue_comand, device_options, **kwargs
+    ):
+        super().__init__(name="ProcessCmd", **kwargs)
+        self._dummy = CommandProcess(
+            logger_config, queue_status, queue_comand, device_options, self.name
+        )
 
     def run(self):
         self._dummy.run()
 
-class ThreadCmd(threading.Thread):
 
+class ThreadCmd(threading.Thread):
     def __init__(self, logger, queue_status, queue_comand, modules, **kwargs):
-        super().__init__(name='ThreadCmd', **kwargs)
-        self._dummy = CommandProcess(logger, queue_status, queue_comand, modules, self.name)
+        super().__init__(name="ThreadCmd", **kwargs)
+        self._dummy = CommandProcess(
+            logger, queue_status, queue_comand, modules, self.name
+        )
 
     def run(self):
         self._dummy.run()
@@ -53,7 +58,6 @@ class CommandProcess:
         self.can_run = threading.Event()
         self.can_run.set()
 
-
     def run(self):
 
         if isinstance(self.logger_config, logging.Logger):
@@ -70,15 +74,15 @@ class CommandProcess:
             self.listeners = list()
             self.signals = dict()
             self.timers = list()
-            
+
             self.signal_sink = signal("sink_send")
             self.signal_sink.connect(self.subsr_signal_sink)
 
             for device in self.devices.values():
                 if device.enabled:
-                    name_tmp = device.dev_class[8:-2].split('.')
+                    name_tmp = device.dev_class[8:-2].split(".")
                     name_class = name_tmp.pop(-1)
-                    name_module = ".".join(name_tmp)  
+                    name_module = ".".join(name_tmp)
                     module = importlib.import_module(name_module)
                     class_ = getattr(module, name_class)
                     self.listeners.append(class_(*device.connection))
@@ -104,26 +108,28 @@ class CommandProcess:
                 if cmd_tpl[1] == 0:
                     self.send_to_thread(cmd_tpl[0])
                 else:
-                    t = timing.RenewableTimer(cmd_tpl[1], self.send_to_thread, cmd_tpl[0])
+                    t = timing.RenewableTimer(
+                        cmd_tpl[1], self.send_to_thread, cmd_tpl[0]
+                    )
                     t.start()
                     self.timers.append(t)
 
         except Exception as e:
-                try:
-                    raise
-                finally:
-                    self.logger.error("Uncaught exception in process '{}'"
-                            .format(self.name), 
-                        exc_info=(e))
+            try:
+                raise
+            finally:
+                self.logger.error(
+                    "Uncaught exception in process '{}'".format(self.name), exc_info=(e)
+                )
 
     def send_to_thread(self, cmd_obj):
         try:
             sig = self.signals.get(cmd_obj.device)
             sig.send(cmd_obj)
         except (KeyError, AttributeError):
-            self.logger.warning("Device {} not known"
-                .format(cmd_obj.device))
+            self.logger.warning("Device {} not known".format(cmd_obj.device))
 
     def subsr_signal_sink(self, value):
-        self.logger.warning("~~X command '{}' was not send to {}!" \
-            .format(value, value.device))
+        self.logger.warning(
+            "~~X command '{}' was not send to {}!".format(value, value.device)
+        )

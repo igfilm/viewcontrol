@@ -1,7 +1,8 @@
 import re
 import yaml
 
-class CommandItemBase (yaml.YAMLObject):
+
+class CommandItemBase(yaml.YAMLObject):
     """Stores one sigle command and provides funtions to write and interpretate
 
     device-specific classes are derived from this class. All command objects
@@ -31,33 +32,37 @@ class CommandItemBase (yaml.YAMLObject):
         self.parser_recv (str): see Args
         self.dict_mapping (str): see Args
     """
-    
-    yaml_tag = u'!CommandItem'
-    start_seq=''
-    end_seq='\r'
-    error_seq=''
 
-    def __init__(self, name, description, 
-                 string_requ=None,
-                 parser_send=None,
-                 parser_recv=None, 
-                 dict_mapping=None):
+    yaml_tag = u"!CommandItem"
+    start_seq = ""
+    end_seq = "\r"
+    error_seq = ""
+
+    def __init__(
+        self,
+        name,
+        description,
+        string_requ=None,
+        parser_send=None,
+        parser_recv=None,
+        dict_mapping=None,
+    ):
         self.name = name
         self.description = description
         self.string_requ = string_requ
         self.parser_send = parser_send
         self.parser_recv = parser_recv
         self.dict_mapping = dict_mapping
-        
+
     def __repr__(self):
         return "{}|{}|{}|{}|{}|{}".format(
-                self.name, 
-                self.description,
-                self.string_requ,
-                self.parser_send,
-                self.parser_recv,
-                type(self.dict_mapping),
-                )
+            self.name,
+            self.description,
+            self.string_requ,
+            self.parser_send,
+            self.parser_recv,
+            type(self.dict_mapping),
+        )
 
     def get_send_command(self, *args):
         """sends the command stored parser_send with the given parameters
@@ -66,10 +71,10 @@ class CommandItemBase (yaml.YAMLObject):
             *args: Variable length argument list.
 
         """
-        if len(args)==0:
+        if len(args) == 0:
             return self._combine_command(self.parser_send)
         else:
-            subcommand=list(args)
+            subcommand = list(args)
         if isinstance(self.dict_mapping, dict):  # auwahl an befehlen
             for i in range(len(subcommand)):
                 if subcommand[i] in self.dict_mapping.keys():
@@ -82,7 +87,7 @@ class CommandItemBase (yaml.YAMLObject):
                     raise ValueError("subcommand '{}' not in dictionary")
             args = tuple(subcommand)
         return self._combine_command(self.parser_send.format(*args))
-    
+
     def get_send_request(self):
         """send the command stored in string_requ"""
 
@@ -97,11 +102,11 @@ class CommandItemBase (yaml.YAMLObject):
         Returns:
             str: combined command
         """
-        tmp_start_seq = ''
+        tmp_start_seq = ""
         if not CommandItemBase.start_seq in str_command:
             tmp_start_seq = CommandItemBase.start_seq
         return tmp_start_seq + str_command + CommandItemBase.end_seq
-    
+
     def get_recv_parser(self, recv_str, map=True):
         """Extract value(s) from recv_str using regex expresion in parser_recv
         
@@ -114,7 +119,7 @@ class CommandItemBase (yaml.YAMLObject):
             object: return value, usualy str, can also be object when maped
         """
 
-        if recv_str == 'nack':
+        if recv_str == "nack":
             return None
         m = re.search(self.parser_recv, recv_str)
         retval = list(m.groups())
@@ -122,7 +127,6 @@ class CommandItemBase (yaml.YAMLObject):
             for i in range(len(retval)):
                 retval[i] = self.dict_mapping.get(retval[i])
         return retval
-        
 
     @staticmethod
     def convert2dict(list_commandobj):
@@ -135,7 +139,7 @@ class CommandItemBase (yaml.YAMLObject):
     @staticmethod
     def load_from_yaml(file_path):
         """loads a object dict from yaml file"""
-        with open(file_path, 'r') as infile:
+        with open(file_path, "r") as infile:
             list_commandobj = yaml.load(infile, Loader=yaml.Loader)
         return CommandItemBase.convert2dict(list_commandobj)
 
@@ -175,7 +179,7 @@ class DictCommandItemLib(dict):
             if m:
                 return key
         return None
-    
+
     def get_full_answer(self, str_answ):
         """return value(s) of interprated string
         

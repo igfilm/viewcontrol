@@ -35,41 +35,51 @@ class ViewControl(object):
         """
         print(args)
         parser = argparse.ArgumentParser(
-            prog="viewcontrol",
-            description='media playback',
-            epilog='to be filled')
-        parser.add_argument('project_folder',
-            help="folder path of project containing db-files and media-files")
-        parser.add_argument('--show',
-            action='store',
-            dest='playlist_name',
-            help="initial show to load (use full as long no GUI exists)")
-        parser.add_argument('-r', '--content_aspect_ratio',
-            action='store',
-            choices=['c', 'cinescope', '21:9', 'w', 'widescreen', '16:9'],
-            help="initial content aspect ratio of movie played by player")
-        parser.add_argument('-s', '--screen',
-            action='store',
+            prog="viewcontrol", description="media playback", epilog="to be filled"
+        )
+        parser.add_argument(
+            "project_folder",
+            help="folder path of project containing db-files and media-files",
+        )
+        parser.add_argument(
+            "--show",
+            action="store",
+            dest="playlist_name",
+            help="initial show to load (use full as long no GUI exists)",
+        )
+        parser.add_argument(
+            "-r",
+            "--content_aspect_ratio",
+            action="store",
+            choices=["c", "cinescope", "21:9", "w", "widescreen", "16:9"],
+            help="initial content aspect ratio of movie played by player",
+        )
+        parser.add_argument(
+            "-s",
+            "--screen",
+            action="store",
             default=1,
             type=int,
-            help="screen number/id for media playback")
-        parser.add_argument('--threading',
-            action='store_true',
-            help='run program only with threading instead of multiprocessing')
-        parser.add_argument('--version',
-            action='version',
-            version=package_version)
+            help="screen number/id for media playback",
+        )
+        parser.add_argument(
+            "--threading",
+            action="store_true",
+            help="run program only with threading instead of multiprocessing",
+        )
+        parser.add_argument("--version", action="version", version=package_version)
         self.argpars_result = parser.parse_args(args[1:])
         self.argpars_result.project_folder = os.path.expanduser(
-            self.argpars_result.project_folder)
+            self.argpars_result.project_folder
+        )
 
         # Loading Logger with Configuration File
-        logger_config_path = 'logging.yaml'
+        logger_config_path = "logging.yaml"
         if os.path.exists(logger_config_path):
-            with open(logger_config_path, 'rt') as f:
+            with open(logger_config_path, "rt") as f:
                 config_log = yaml.safe_load(f.read())
-                for handler in config_log.get('handlers').values():
-                    if 'filename' in handler.keys():
+                for handler in config_log.get("handlers").values():
+                    if "filename" in handler.keys():
                         dir_log = os.path.dirname(handler.get("filename"))
                         if not os.path.exists(dir_log):
                             os.makedirs(dir_log)
@@ -79,8 +89,11 @@ class ViewControl(object):
 
         self.logger = logging.getLogger(threading.current_thread().name)
         self.logger.info("##################################")
-        self.logger.info("Program start with command line options: {}".
-            format(str(self.argpars_result)))
+        self.logger.info(
+            "Program start with command line options: {}".format(
+                str(self.argpars_result)
+            )
+        )
 
         # Add logging with traceback for all unhandled exceptions in
         # main thread
@@ -92,28 +105,20 @@ class ViewControl(object):
         else:
             q = queue.Queue()
         self.config_queue_logger = {
-            'version': 1,
-            'disable_existing_loggers': True,
-            'handlers': {
-                'queue': {
-                    'class': 'logging.handlers.QueueHandler',
-                    'queue': q,
-                },
+            "version": 1,
+            "disable_existing_loggers": True,
+            "handlers": {
+                "queue": {"class": "logging.handlers.QueueHandler", "queue": q,},
             },
-            'root': {
-                'level': 'DEBUG',
-                'handlers': ['queue']
-            },
+            "root": {"level": "DEBUG", "handlers": ["queue"]},
         }
 
         # Create and Start thread_logger
         self.lp = threading.Thread(
-            target=self.thread_logger, 
-            args=(q,), 
-            name='thread_logger',
-            daemon=True)
+            target=self.thread_logger, args=(q,), name="thread_logger", daemon=True
+        )
         self.lp.start()
-        self.logger.info("Started '{}' with pid 'N.A.'".format(self.lp.name, ))
+        self.logger.info("Started '{}' with pid 'N.A.'".format(self.lp.name,))
 
         if not self.argpars_result.threading:
             self.cmd_control_queue = multiprocessing.Queue()
@@ -130,8 +135,8 @@ class ViewControl(object):
         self.sig_mpv_prop = signal("mpv_prop_changed")
         self.t_listen_process_mpv = threading.Thread(
             target=self.thread_listen_process_mpv,
-            name='listen_process_mpv',
-            daemon=True
+            name="listen_process_mpv",
+            daemon=True,
         )
         self.t_listen_process_mpv.start()
         self.sig_mpv_prop.connect(self.subscr_listen_process_mpv)
@@ -140,8 +145,8 @@ class ViewControl(object):
         self.sig_cmd_prop = signal("cmd_prop_changed")
         self.t_listen_process_cmd = threading.Thread(
             target=self.thread_listen_process_cmd,
-            name='listen_process_cmd',
-            daemon=True
+            name="listen_process_cmd",
+            daemon=True,
         )
         self.t_listen_process_cmd.start()
         self.sig_cmd_prop.connect(self.subscr_listen_process_cmd)
@@ -155,48 +160,54 @@ class ViewControl(object):
 
         self.event_queue = queue.Queue()
         self.t_event_system = threading.Thread(
-            target=self.thread_event_system,
-            name='event_system',
-            daemon=True
+            target=self.thread_event_system, name="event_system", daemon=True
         )
         self.t_event_system.start()
 
         self.playlist = show.Show(
-            project_folder=self.argpars_result.project_folder, 
-            content_aspect_ratio=self.argpars_result.content_aspect_ratio)
-        logging.info("Connected to database: {}"
-            .format(self.playlist.connected_datbase))
+            project_folder=self.argpars_result.project_folder,
+            content_aspect_ratio=self.argpars_result.content_aspect_ratio,
+        )
+        logging.info(
+            "Connected to database: {}".format(self.playlist.connected_datbase)
+        )
         self.playlist.show_load(self.argpars_result.playlist_name)
-        self.logger.info("loaded Show: {}"
-            .format(self.playlist.show_name))
+        self.logger.info("loaded Show: {}".format(self.playlist.show_name))
 
         if not self.argpars_result.threading:
-            self.process_cmd = ProcessCmd(self.config_queue_logger,
-                                          self.cmd_status_queue,
-                                          self.cmd_control_queue,
-                                          self.playlist.show_options.devices)
-            
-            self.process_mpv = ProcessMpv(self.config_queue_logger,
-                                          self.mpv_status_queue,
-                                          self.mpv_control_queue,
-                                          self.argpars_result.screen)
+            self.process_cmd = ProcessCmd(
+                self.config_queue_logger,
+                self.cmd_status_queue,
+                self.cmd_control_queue,
+                self.playlist.show_options.devices,
+            )
+
+            self.process_mpv = ProcessMpv(
+                self.config_queue_logger,
+                self.mpv_status_queue,
+                self.mpv_control_queue,
+                self.argpars_result.screen,
+            )
         else:
-            self.process_cmd = ThreadCmd(self.logger,
-                                         self.cmd_status_queue,
-                                         self.cmd_control_queue,
-                                         self.playlist.show_options.devices)
-            
-            self.process_mpv = ThreadMpv(self.logger,
-                                         self.mpv_status_queue,
-                                         self.mpv_control_queue,
-                                         self.argpars_result.screen)
-            
+            self.process_cmd = ThreadCmd(
+                self.logger,
+                self.cmd_status_queue,
+                self.cmd_control_queue,
+                self.playlist.show_options.devices,
+            )
+
+            self.process_mpv = ThreadMpv(
+                self.logger,
+                self.mpv_status_queue,
+                self.mpv_control_queue,
+                self.argpars_result.screen,
+            )
+
         self.processes = []
         self.processes.append(self.process_cmd)
         self.processes.append(self.process_mpv)
 
-        self.logger.info("Initialized __main__ with pid {}"
-            .format(os.getpid()))
+        self.logger.info("Initialized __main__ with pid {}".format(os.getpid()))
 
         # blocking functions for appending next element to mpv playlist
         self.event_next_happened = threading.Event()
@@ -204,15 +215,13 @@ class ViewControl(object):
 
         # player currently playing media or is paused
         self.playing = threading.Event()
-        self.playing.set() 
+        self.playing.set()
 
         # listen to all keypress events. Event generator for Testing.
-        listener = keyboard.Listener(
-            on_press=self.on_press,
-            on_release=self.on_release)
+        listener = keyboard.Listener(on_press=self.on_press, on_release=self.on_release)
         listener.setName("key_listener")
         listener.setDaemon(True)
-        listener.start() 
+        listener.start()
 
     def main(self):
         """
@@ -292,7 +301,7 @@ class ViewControl(object):
 
         """
         self.player_append_element(self.playlist.next())
-    
+
     def player_append_current_from_playlist(self):
         """Append current playlist element to player
 
@@ -312,13 +321,12 @@ class ViewControl(object):
         user-defined time is stored.
 
         """
-        if isinstance(element.media_element, show.StillElement) \
-                or isinstance(element.media_element, show.TextElement):
-            self.mpv_control_queue.put(
-                (element.media_element.file_path, element.time))
+        if isinstance(element.media_element, show.StillElement) or isinstance(
+            element.media_element, show.TextElement
+        ):
+            self.mpv_control_queue.put((element.media_element.file_path, element.time))
         else:
-            self.mpv_control_queue.put(
-                (element.media_element.file_path, None))
+            self.mpv_control_queue.put((element.media_element.file_path, None))
 
     def subscr_time(self, remaining_time):
         """Blinker-Event subscriber: remaining playtime of media element
@@ -330,9 +338,7 @@ class ViewControl(object):
         allows you to add the next element.
 
         """
-        if (self.event_next_happened.is_set()
-                and remaining_time
-                and remaining_time < 1):
+        if self.event_next_happened.is_set() and remaining_time and remaining_time < 1:
             self.event_next_happened.clear()
             self.event_append.set()
 
@@ -351,7 +357,7 @@ class ViewControl(object):
 
         """
         self.logger.debug("'mpv_prop_changed' send: {}".format(msg))
-        if msg[0] == 'playlist-pos' and self.playlist:
+        if msg[0] == "playlist-pos" and self.playlist:
             self.event_next_happened.set()
 
     def thread_listen_process_mpv(self):
@@ -362,9 +368,9 @@ class ViewControl(object):
         """
         while True:
             data = self.mpv_status_queue.get(block=True)
-            if data[0] == 'time-pos':
+            if data[0] == "time-pos":
                 self.sig_mpv_time.send(data[1])
-            elif data[0] == 'time-remaining':
+            elif data[0] == "time-remaining":
                 self.sig_mpv_time_remain.send(data[1])
                 self.logger.debug(data[1])
             else:
@@ -378,7 +384,7 @@ class ViewControl(object):
 
         """
         self.logger.debug("'cmd_prop_changed' send: {}".format(msg))
-    
+
     def thread_listen_process_cmd(self):
         """Thread: forward status information and received messages ...
 
@@ -419,15 +425,15 @@ class ViewControl(object):
     def on_press(self, key):
         """pynput event listener: key event on press"""
         try:
-            self.logger.debug('alphanumeric key {0} pressed'.format(key))
+            self.logger.debug("alphanumeric key {0} pressed".format(key))
         except AttributeError:
-            self.logger.debug('special key {0} pressed'.format(key))
+            self.logger.debug("special key {0} pressed".format(key))
 
         if key == keyboard.Key.page_down:
             self.player_pause()
         elif key == keyboard.Key.page_up:
             self.player_resume()
-        
+
         self.event_queue.put(("KeyEvent", key, "on_press"))
 
     def on_release(self, key):
@@ -445,8 +451,8 @@ class ViewControl(object):
             return
         if "Uncaught exception in subprocess:" not in str(exc_value):
             self.logger.error(
-                "Uncaught exception",
-                exc_info=(exc_type, exc_value, exc_traceback))
+                "Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback)
+            )
 
         self.logger.error("Exiting Program")
         sys.exit()  # TODO not working

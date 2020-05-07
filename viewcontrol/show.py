@@ -15,8 +15,7 @@ from moviepy.video.compositing.CompositeVideoClip import CompositeVideoClip
 from moviepy.video.fx.resize import resize
 from moviepy.video.io.VideoFileClip import VideoFileClip
 from numpy import array, arange
-from sqlalchemy import (Column, Integer, String, Boolean, ForeignKey,
-                        Float, Binary)
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Float, Binary
 from sqlalchemy import orm
 from sqlalchemy.ext.declarative import declarative_base
 from wand.color import Color
@@ -64,8 +63,10 @@ class ShowOptions:
             if ispkg:
                 try:
                     mod = importlib.import_module(
-                        "viewcontrol.remotecontrol.{}.threadcommunication"
-                        .format(modname))
+                        "viewcontrol.remotecontrol.{}.threadcommunication".format(
+                            modname
+                        )
+                    )
                 except ModuleNotFoundError:
                     continue
                 clsmembers = inspect.getmembers(mod, inspect.isclass)
@@ -133,8 +134,8 @@ class ShowOptionDevice(Base):
 
     """
 
-    __tablename__ = 'show_option_device'
-    _id = Column(Integer, primary_key=True, name='id')
+    __tablename__ = "show_option_device"
+    _id = Column(Integer, primary_key=True, name="id")
     _name = Column(String(50), name="name")
     _ip_address = Column(String(15), name="ip_address")
     _port = Column(Integer, name="port")
@@ -175,7 +176,7 @@ class ShowOptionDevice(Base):
 
         """
         self._name = device_class.__name__
-        self._protocol = device_class.mro()[0].__module__.split('.')[2]
+        self._protocol = device_class.mro()[0].__module__.split(".")[2]
         self._dev_class = str(device_class)
 
 
@@ -283,12 +284,12 @@ class ManagerBase(abc.ABC):
 
         """
         if num > 1:
-            name = '{}_{}'.format(name, num)
+            name = "{}_{}".format(name, num)
         name_exists = self._elements_get_with_name_from_db(name)
         if name_exists:
             if obj and obj.id == name_exists.id:
                 return name
-            name = self._check_name_exists(name, num=num+1)
+            name = self._check_name_exists(name, num=num + 1)
         return name
 
     def _elements_load_from_db(self):
@@ -344,16 +345,14 @@ class LogicElement(Base):
         etyp (string): polymorphic_identity of element in database
 
     """
-    __tablename__ = 'logic_element'
+
+    __tablename__ = "logic_element"
     _id = Column(Integer, primary_key=True, name="id")
     _name = Column(String(50), name="name", unique=True)
     _key = Column(Integer, name="key")
     _etype = Column(String(20), name="etype")
 
-    __mapper_args__ = {
-        'polymorphic_on': _etype,
-        'polymorphic_identity': 'LogicElement'
-    }
+    __mapper_args__ = {"polymorphic_on": _etype, "polymorphic_identity": "LogicElement"}
 
     def __init__(self, name, key):
         """Create a LogicElement object with the given options.
@@ -375,8 +374,8 @@ class LogicElement(Base):
 
     @name.setter
     def name(self, name):
-        if not name[0] == '#':
-            name = '#' + name
+        if not name[0] == "#":
+            name = "#" + name
         self._name = name
 
     @property
@@ -390,9 +389,7 @@ class LogicElement(Base):
 class LoopStart(LogicElement):
     """Saves position for the start of a loop condition"""
 
-    __mapper_args__ = {
-        'polymorphic_identity':'LoopStart'
-    }
+    __mapper_args__ = {"polymorphic_identity": "LoopStart"}
 
     def __init__(self, name, key):
         super().__init__(name, key)
@@ -403,9 +400,7 @@ class LoopEnd(LogicElement):
 
     _cycles = Column(Integer, name="cycles")
 
-    __mapper_args__ = {
-        'polymorphic_identity':'LoopEnd'
-    }
+    __mapper_args__ = {"polymorphic_identity": "LoopEnd"}
 
     def __init__(self, name, key, cycles):
         super().__init__(name, key)
@@ -426,9 +421,7 @@ class JumpToTarget(LogicElement):
 
     _name_event = Column(String(20), name="name_event")
 
-    __mapper_args__ = {
-        'polymorphic_identity':'JumpToTarget'
-    }
+    __mapper_args__ = {"polymorphic_identity": "JumpToTarget"}
 
     def __init__(self, name, name_event):
         self._name_event = name_event
@@ -441,22 +434,18 @@ class JumpToTarget(LogicElement):
 
 class Barrier(LogicElement):
     """blocking funtion in show until event happens"""
-    __mapper_args__ = {
-        'polymorphic_identity':'Barrier'
-    }
+
+    __mapper_args__ = {"polymorphic_identity": "Barrier"}
 
 
 class BarrierEvent(Barrier):
 
-    __mapper_args__ = {
-        'polymorphic_identity':'BarrierEvent'
-    }
+    __mapper_args__ = {"polymorphic_identity": "BarrierEvent"}
+
 
 class BarrierTime(Barrier):
 
-    __mapper_args__ = {
-        'polymorphic_identity':'BarrierTime'
-    }
+    __mapper_args__ = {"polymorphic_identity": "BarrierTime"}
 
 
 class LogicElementManager(ManagerBase):
@@ -472,12 +461,12 @@ class LogicElementManager(ManagerBase):
     """
 
     def _elements_get_with_name_from_db(self, name):
-        return self.session.query(LogicElement) \
-            .filter(LogicElement._name==name).first()
+        return (
+            self.session.query(LogicElement).filter(LogicElement._name == name).first()
+        )
 
     def _elements_get_by_id_from_db(self, id):
-        return self._session.query(LogicElement)\
-            .filter(LogicElement._id==id).first()
+        return self._session.query(LogicElement).filter(LogicElement._id == id).first()
 
     def _elements_get_all_from_db(self):
         return self.session.query(LogicElement).all()
@@ -486,8 +475,11 @@ class LogicElementManager(ManagerBase):
         """make a pair of loop elements 
         which will be added to the list via add_element by the calling function
         """
-        raw_key = self.session.query(LoopStart._key) \
-            .order_by(sqlalchemy.desc(LoopStart._key)).first()
+        raw_key = (
+            self.session.query(LoopStart._key)
+            .order_by(sqlalchemy.desc(LoopStart._key))
+            .first()
+        )
         if not raw_key:
             key = 1
         else:
@@ -529,20 +521,18 @@ class MediaElement(Base):
         etype    (string): polymorphic_identity of element in database
 
     """
-    __tablename__ = 'media_element'
+
+    __tablename__ = "media_element"
     _id = Column(Integer, primary_key=True, name="id")
-    _name = Column(String(20), name ="name", unique=True)
+    _name = Column(String(20), name="name", unique=True)
     _file_path_w = Column(String(200), name="file_path_w")
     _file_path_c = Column(String(200), name="file_path_c")
     _etype = Column(String(10), name="etype")
 
-    __mapper_args__ = {
-        'polymorphic_on':_etype,
-        'polymorphic_identity':'MediaElement'
-    }
+    __mapper_args__ = {"polymorphic_on": _etype, "polymorphic_identity": "MediaElement"}
 
     project_path = None
-    content_aspect_ratio = 'widescreen'
+    content_aspect_ratio = "widescreen"
     # for debuging only
     _skip_high_workload_functions = False
 
@@ -552,10 +542,10 @@ class MediaElement(Base):
 
     @classmethod
     def set_content_aspect_ratio(cls, ratio):
-        if ratio in ['w', 'widescreen', '16:9']:
-            cls.content_aspect_ratio = 'widescreen'
+        if ratio in ["w", "widescreen", "16:9"]:
+            cls.content_aspect_ratio = "widescreen"
         else:
-            cls.content_aspect_ratio = 'cinescope'
+            cls.content_aspect_ratio = "cinescope"
 
     @staticmethod
     def _create_abs_filepath(abs_source, mid, extension, num=1):
@@ -568,15 +558,17 @@ class MediaElement(Base):
         else:
             midnum = mid
         target_file = os.path.join(
-            MediaElement.project_path,
-            target_file_core + midnum + extension
+            MediaElement.project_path, target_file_core + midnum + extension
         )
         if os.path.exists(target_file):
             return MediaElement._create_abs_filepath(
-                abs_source, mid, extension, num=num+1)
+                abs_source, mid, extension, num=num + 1
+            )
         else:
-            return target_file, \
-                os.path.relpath(target_file, start=MediaElement.project_path)
+            return (
+                target_file,
+                os.path.relpath(target_file, start=MediaElement.project_path),
+            )
 
     @property
     def id(self):
@@ -592,11 +584,10 @@ class MediaElement(Base):
 
     @property
     def file_path(self):
-        if MediaElement.content_aspect_ratio == 'widescreen':
+        if MediaElement.content_aspect_ratio == "widescreen":
             return os.path.join(MediaElement.project_path, self._file_path_w)
         else:
             return os.path.join(MediaElement.project_path, self._file_path_c)
-
 
     def __init__(self, name, file_path_w, file_path_c):
         self._name = name
@@ -622,60 +613,66 @@ class VideoElement(MediaElement):
 
     _duration = Column(Integer, name="duration")
 
-    __mapper_args__ = {
-        'polymorphic_identity':'VideoElement'
-    }
+    __mapper_args__ = {"polymorphic_identity": "VideoElement"}
 
     def __init__(self, name, file_path, t_start=0, t_end=None):
 
-        adst_c, rdst_c = \
-            MediaElement._create_abs_filepath(file_path, "_c", ".mp4")
-        dur, car = self._insert_video(file_path, adst_c,
-            cinescope=True,
-            t_start=t_start,
-            t_end=t_end)
+        adst_c, rdst_c = MediaElement._create_abs_filepath(file_path, "_c", ".mp4")
+        dur, car = self._insert_video(
+            file_path, adst_c, cinescope=True, t_start=t_start, t_end=t_end
+        )
         self._duration = dur
         content_aspect_ratio = car
-        if content_aspect_ratio == '21:9':
+        if content_aspect_ratio == "21:9":
             adst_w = adst_c
             rdst_w = rdst_c
         else:
-            adst_w, rdst_w = \
-                MediaElement._create_abs_filepath(file_path, "_w", ".mp4")
-            self._insert_video(file_path, adst_w,
+            adst_w, rdst_w = MediaElement._create_abs_filepath(file_path, "_w", ".mp4")
+            self._insert_video(
+                file_path,
+                adst_w,
                 content_aspect=content_aspect_ratio,
                 cinescope=False,
                 t_start=t_start,
-                t_end=t_end)
+                t_end=t_end,
+            )
         super().__init__(name, rdst_w, rdst_c)
 
     @property
     def duration(self):
         return self._duration
 
-    def _insert_video(self,
-            path_scr,
-            path_dst,
-            content_aspect=None,
-            cinescope=True,
-            t_start=0,
-            t_end=None):
+    def _insert_video(
+        self,
+        path_scr,
+        path_dst,
+        content_aspect=None,
+        cinescope=True,
+        t_start=0,
+        t_end=None,
+    ):
         """convert source file and save it in project directory"""
         if MediaElement._skip_high_workload_functions:
-            open(path_dst, 'a').close()
+            open(path_dst, "a").close()
             return 42, "16:9"
 
         video_clip = VideoFileClip(path_scr).subclip(t_start=t_start, t_end=t_end)
         if cinescope:
             content_aspect = VideoElement._get_video_content_aspect_ratio(video_clip)
         if content_aspect == "16:9" and cinescope:
-            #else do nothing cinscope identical with widescreen
-            cclip = ColorClip(size=(1920, 1080), color=(0, 0, 0), duration=video_clip.duration)
-            video_clip = video_clip.fx(resize, height=810).set_position('center')
+            # else do nothing cinscope identical with widescreen
+            cclip = ColorClip(
+                size=(1920, 1080), color=(0, 0, 0), duration=video_clip.duration
+            )
+            video_clip = video_clip.fx(resize, height=810).set_position("center")
             result = CompositeVideoClip([cclip, video_clip])
-            result.write_videofile(path_dst,fps=video_clip.fps, codec='libx265', preset="superfast")
-        elif t_start>0 or t_end:
-            video_clip.write_videofile(path_dst,fps=video_clip.fps, codec='libx265', preset="superfast")
+            result.write_videofile(
+                path_dst, fps=video_clip.fps, codec="libx265", preset="superfast"
+            )
+        elif t_start > 0 or t_end:
+            video_clip.write_videofile(
+                path_dst, fps=video_clip.fps, codec="libx265", preset="superfast"
+            )
         else:
             copyfile(path_scr, path_dst)
         return video_clip.duration, content_aspect
@@ -684,20 +681,27 @@ class VideoElement(MediaElement):
     def _get_video_content_aspect_ratio(video_file_clip):
         """anyalyse video for the aspect ratio of its content"""
         vfc = video_file_clip
-        samples=5
-        sample_time_step = video_file_clip.duration/samples
+        samples = 5
+        sample_time_step = video_file_clip.duration / samples
         w = []
-        for t in arange(0,video_file_clip.duration,sample_time_step):
-            frame=video_file_clip.get_frame(t)
+        for t in arange(0, video_file_clip.duration, sample_time_step):
+            frame = video_file_clip.get_frame(t)
 
-            w.append(frame[[int(vfc.h*.125), int(vfc.h*.5), int(vfc.h*.875)], 0:vfc.w].mean(axis=2).mean(axis=1))
-        w=array(w)
+            w.append(
+                frame[
+                    [int(vfc.h * 0.125), int(vfc.h * 0.5), int(vfc.h * 0.875)],
+                    0 : vfc.w,
+                ]
+                .mean(axis=2)
+                .mean(axis=1)
+            )
+        w = array(w)
         wm = w.mean(axis=0)
 
-        if wm[0] < 1 and wm[2] < 1 and wm[1]>=1:
-            return '21:9'
+        if wm[0] < 1 and wm[2] < 1 and wm[1] >= 1:
+            return "21:9"
         else:
-            return '16:9'
+            return "16:9"
 
 
 class TextElement(MediaElement):
@@ -709,14 +713,12 @@ class TextElement(MediaElement):
     
     """
 
-    __mapper_args__ = {
-        'polymorphic_identity':'TextElement'
-    }
+    __mapper_args__ = {"polymorphic_identity": "TextElement"}
 
     def __init__(self, name, text):
-        if name[0] != '~':
-            name = '~' + name
-        filename = '_' + name[1:] + ".jpg"
+        if name[0] != "~":
+            name = "~" + name
+        filename = "_" + name[1:] + ".jpg"
         super().__init__(name, filename, filename)
         self._text = text
         self._make_text_image(text, self.file_path)
@@ -734,16 +736,16 @@ class TextElement(MediaElement):
     def _make_text_image(text, path_dst):
         """create image with given text and save in project folder"""
         if MediaElement._skip_high_workload_functions:
-            open(path_dst, 'a').close()
+            open(path_dst, "a").close()
             return
 
         with Drawing() as draw:
             with Image(width=1920, height=1080, background=Color("black")) as image:
-                #draw.font = 'wandtests/assets/League_Gothic.otf'
+                # draw.font = 'wandtests/assets/League_Gothic.otf'
                 draw.font_size = 100
                 draw.stroke_color = "white"
                 draw.fill_color = "white"
-                draw.text_alignment = 'center'
+                draw.text_alignment = "center"
                 draw.text(int(image.width / 2), int(image.height / 2), text)
                 draw(image)
                 image.save(filename=path_dst)
@@ -760,21 +762,22 @@ class StillElement(MediaElement):
     
     """
 
-    __mapper_args__ = {
-        'polymorphic_identity':'StillElement'
-    }
+    __mapper_args__ = {"polymorphic_identity": "StillElement"}
 
     def __init__(self, name, file_path):
-        #TODO add handling for gifs if possible
+        # TODO add handling for gifs if possible
         _, file_extension = os.path.splitext(file_path)
-        if not file_extension == '.gif':
+        if not file_extension == ".gif":
             file_extension = ".jpg"
-        adst_w, rdst_w = MediaElement._create_abs_filepath(file_path, "_w", file_extension)
-        adst_c, rdst_c = MediaElement._create_abs_filepath(file_path, "_c", file_extension)
-        StillElement._insert_image(file_path, adst_w , False)
+        adst_w, rdst_w = MediaElement._create_abs_filepath(
+            file_path, "_w", file_extension
+        )
+        adst_c, rdst_c = MediaElement._create_abs_filepath(
+            file_path, "_c", file_extension
+        )
+        StillElement._insert_image(file_path, adst_w, False)
         StillElement._insert_image(file_path, adst_c, True)
         super().__init__(name, rdst_w, rdst_c)
-
 
     @staticmethod
     def _insert_image(path_scr, path_dst, cinescope):
@@ -783,20 +786,20 @@ class StillElement(MediaElement):
             To many gif frames are causing a segmentation fault!!
         """
         if MediaElement._skip_high_workload_functions:
-            open(path_dst, 'a').close()
+            open(path_dst, "a").close()
             return
 
         if cinescope:
-            screesize =  (1920, 810)
+            screesize = (1920, 810)
         else:
-            screesize =  (1920, 1080)
+            screesize = (1920, 1080)
 
         max_upscale = 10
 
-        #check size, if pdf calc resulution to import it in the needed size
+        # check size, if pdf calc resulution to import it in the needed size
         with Image(filename=path_scr, width=1920) as tmp_scr:
-            a = screesize[0]/tmp_scr.width
-            b = screesize[1]/tmp_scr.height
+            a = screesize[0] / tmp_scr.width
+            b = screesize[1] / tmp_scr.height
             scale = min(a, b)
             if max_upscale and scale > max_upscale:
                 scale = max_upscale
@@ -809,17 +812,19 @@ class StillElement(MediaElement):
                 res = None
 
         with Image(filename=path_scr, resolution=res) as scr:
-            scr.colorspace = 'rgb'
-            scr.format = 'jpeg'
+            scr.colorspace = "rgb"
+            scr.format = "jpeg"
 
             if not scr.mimetype == "image/gif":
                 with Image(width=1920, height=1080, background=Color("black")) as dst:
                     if not scale == 1:
                         scr.scale(*s_size)
-                        #img.resize(*s_size)
-                    offset_width = int((dst.width-scr.width)/2)
-                    offset_height = int((dst.height-scr.height)/2)
-                    dst.composite(operator='over', left=offset_width, top=offset_height, image=scr)
+                        # img.resize(*s_size)
+                    offset_width = int((dst.width - scr.width) / 2)
+                    offset_height = int((dst.height - scr.height) / 2)
+                    dst.composite(
+                        operator="over", left=offset_width, top=offset_height, image=scr
+                    )
                     dst.save(filename=path_dst)
             else:
                 raise Exception("Gifs are not allowed atm")
@@ -829,7 +834,9 @@ class StartElement(MediaElement):
     """Class for start MediaElement cointaining the program picture."""
 
     def __init__(self):
-        super().__init__('viewcontrol', 'media/viewcontrol.png', 'media/viewcontrol.png')
+        super().__init__(
+            "viewcontrol", "media/viewcontrol.png", "media/viewcontrol.png"
+        )
 
 
 class MediaElementManager(ManagerBase):
@@ -845,12 +852,12 @@ class MediaElementManager(ManagerBase):
     """
 
     def _elements_get_with_name_from_db(self, name, num=1):
-        return self._session.query(MediaElement)\
-            .filter(MediaElement._name==name).first()
+        return (
+            self._session.query(MediaElement).filter(MediaElement._name == name).first()
+        )
 
     def _elements_get_by_id_from_db(self, id):
-        return self._session.query(MediaElement)\
-            .filter(MediaElement._id==id).first()
+        return self._session.query(MediaElement).filter(MediaElement._id == id).first()
 
     def _elements_get_all_from_db(self):
         return self._session.query(MediaElement).all()
@@ -884,42 +891,46 @@ class SequenceModule(Base):
 
     """
 
-    __tablename__ = 'sequence_module'
+    __tablename__ = "sequence_module"
     _id = Column(Integer, primary_key=True, name="id")
     _sequence_name = Column(String(50), nullable=True, name="sequence_name")
     _position = Column(Integer, name="position")
     _time = Column(Float, name="time")
     _deleted = Column(Boolean, name="deleted", default=False)
-    _logic_element_id = Column(Integer,
-        ForeignKey('logic_element.id'), name="logic_element_id")
-    _logic_element = orm.relationship("LogicElement",
-        foreign_keys=[_logic_element_id])
-    _media_element_id = Column(Integer,
-        ForeignKey('media_element.id'), name="media_element_id")
-    _media_element = orm.relationship("MediaElement",
-        foreign_keys=[_media_element_id])
-    _list_commands = orm.relationship("ModuleCommand", back_populates="sequence_module", cascade="all, delete-orphan")
+    _logic_element_id = Column(
+        Integer, ForeignKey("logic_element.id"), name="logic_element_id"
+    )
+    _logic_element = orm.relationship("LogicElement", foreign_keys=[_logic_element_id])
+    _media_element_id = Column(
+        Integer, ForeignKey("media_element.id"), name="media_element_id"
+    )
+    _media_element = orm.relationship("MediaElement", foreign_keys=[_media_element_id])
+    _list_commands = orm.relationship(
+        "ModuleCommand", back_populates="sequence_module", cascade="all, delete-orphan"
+    )
 
-
-    def __init__(self, sequence_name, position, element=None, time=None, list_commands=[]):
+    def __init__(
+        self, sequence_name, position, element=None, time=None, list_commands=[]
+    ):
         self._sequence_name = sequence_name
         self._position = position
         if isinstance(element, VideoElement):
-            #get length of video
+            # get length of video
             time = element.duration
             pass
-        elif isinstance(element, StillElement) \
-                or isinstance(element, TextElement):
+        elif isinstance(element, StillElement) or isinstance(element, TextElement):
             time = time
         else:
             time = None
-        self._time=time
+        self._time = time
         self._element_set(element)
         self._list_commands = list()
         self.command_add(list_commands)
 
     def __repr__(self):
-        return "|{:04d}|{:04d}|{:<20}{}".format(self.id, self._position, self.name, self._time)
+        return "|{:04d}|{:04d}|{:<20}{}".format(
+            self.id, self._position, self.name, self._time
+        )
 
     @property
     def id(self):
@@ -1038,21 +1049,21 @@ class SequenceModule(Base):
         for mod_com in self._list_commands:
             if mod_com.command is command_obj:
                 self._list_commands.remove(mod_com)
-        #WARNING no verificartion if and which elements were deleted (or not)
+        # WARNING no verificartion if and which elements were deleted (or not)
         return True
 
     def module_delete_self(self):
         self._deleted = True
 
-    #def rename_sequence(self, new_name):
+    # def rename_sequence(self, new_name):
     #    self._sequence_name = new_name
 
     def copy(self):
         copy = SequenceModule(
-            sequence_name = self._sequence_name,
-            position = self.position,
-            element= self.logic_element if self.logic_element else self.media_element,
-            time= self.time
+            sequence_name=self._sequence_name,
+            position=self.position,
+            element=self.logic_element if self.logic_element else self.media_element,
+            time=self.time,
         )
         for cmd in self.list_commands:
             copy.command_add(cmd)
@@ -1065,18 +1076,18 @@ class SequenceModule(Base):
 
 class AssosciationCommand(Base):
 
-    __tablename__ = 'assosciation_command'
+    __tablename__ = "assosciation_command"
     _id = Column(Integer, primary_key=True, name="id")
     _etype = Column(String(10), name="etype")
 
-    command_id = Column(Integer, ForeignKey('command_object.id'))
+    command_id = Column(Integer, ForeignKey("command_object.id"))
     command = orm.relationship("CommandObject")
 
     delay = Column(Integer)
 
     __mapper_args__ = {
-        'polymorphic_on':_etype,
-        'polymorphic_identity':'AssosciationCommand'
+        "polymorphic_on": _etype,
+        "polymorphic_identity": "AssosciationCommand",
     }
 
 
@@ -1086,29 +1097,28 @@ class ModuleCommand(AssosciationCommand):
     
     """
 
-    sequence_module_id = Column(Integer, ForeignKey('sequence_module.id'))
-    sequence_module = orm.relationship("SequenceModule", back_populates="_list_commands")
+    sequence_module_id = Column(Integer, ForeignKey("sequence_module.id"))
+    sequence_module = orm.relationship(
+        "SequenceModule", back_populates="_list_commands"
+    )
 
-    __mapper_args__ = {
-        'polymorphic_identity':'ModuleCommand'
-    }
+    __mapper_args__ = {"polymorphic_identity": "ModuleCommand"}
 
 
 class EventCommand(AssosciationCommand):
 
-    event_module_id = Column(Integer, ForeignKey('event_module.id'))
+    event_module_id = Column(Integer, ForeignKey("event_module.id"))
     event_module = orm.relationship("EventModule", back_populates="_list_commands")
 
-    __mapper_args__ = {
-        'polymorphic_identity':'EventCommand'
-    }
+    __mapper_args__ = {"polymorphic_identity": "EventCommand"}
 
 
 class CommandObject(Base):
     """Command Database Object
 
     """
-    __tablename__ = 'command_object'
+
+    __tablename__ = "command_object"
     _id = Column(Integer, primary_key=True, name="id")
     _parents = orm.relationship("ModuleCommand", back_populates="command")
     _name = Column(String(50), name="name")
@@ -1164,12 +1174,18 @@ class CommandObject(Base):
         if not self._cmd_parameter1:
             return ()
         elif self._cmd_parameter3:
-            return (self._cmd_parameter1, self._cmd_parameter2,
-                self._cmd_parameter3, )
+            return (
+                self._cmd_parameter1,
+                self._cmd_parameter2,
+                self._cmd_parameter3,
+            )
         elif self._cmd_parameter2:
-            return (self._cmd_parameter1, self._cmd_parameter2, )
+            return (
+                self._cmd_parameter1,
+                self._cmd_parameter2,
+            )
         else:  # self.cmd_parameter1
-            return (self._cmd_parameter1, )
+            return (self._cmd_parameter1,)
         # Note, brackets are tuple brackets
 
     def set_parameters(self, *args):
@@ -1206,18 +1222,22 @@ class CommandObject(Base):
         else:
             id = -1
         return "{:04d}|{}|{}|{}|{}".format(
-            id, self._name, self._device, self._name_cmd, self.get_parameters())
+            id, self._name, self._device, self._name_cmd, self.get_parameters()
+        )
 
 
 class CommandObjectManager(ManagerBase):
-
     def _elements_get_with_name_from_db(self, name, num=1):
-        return self._session.query(CommandObject)\
-            .filter(CommandObject._name==name).first()
+        return (
+            self._session.query(CommandObject)
+            .filter(CommandObject._name == name)
+            .first()
+        )
 
     def _elements_get_by_id_from_db(self, id):
-        return self._session.query(CommandObject)\
-            .filter(CommandObject._id==id).first()
+        return (
+            self._session.query(CommandObject).filter(CommandObject._id == id).first()
+        )
 
     def _elements_get_all_from_db(self):
         return self._session.query(CommandObject).all()
@@ -1228,19 +1248,24 @@ class EventModule(Base):
     
     No abc.ABC abstract class because of metaclass conflict
     """
-    __tablename__ = 'event_module'
+
+    __tablename__ = "event_module"
     _id = Column(Integer, primary_key=True, name="id")
     _sequence_name = Column(String(50), nullable=True, name="sequence_name")
     _name = Column(String(50), name="name")
     _etype = Column(String(10), name="etype")
-    _list_commands = orm.relationship("EventCommand", back_populates="event_module", cascade="all, delete-orphan")
-    _jump_to_target_element_id = Column(Integer, ForeignKey('logic_element.id'), name="jump_to_target_element_id", nullable=True)
+    _list_commands = orm.relationship(
+        "EventCommand", back_populates="event_module", cascade="all, delete-orphan"
+    )
+    _jump_to_target_element_id = Column(
+        Integer,
+        ForeignKey("logic_element.id"),
+        name="jump_to_target_element_id",
+        nullable=True,
+    )
     _jump_to_target_element = orm.relationship("JumpToTarget")
 
-    __mapper_args__ = {
-        'polymorphic_on':_etype,
-        'polymorphic_identity':'EventModule'
-    }
+    __mapper_args__ = {"polymorphic_on": _etype, "polymorphic_identity": "EventModule"}
 
     def __init__(self, sequence_name, name):
         self._sequence_name = sequence_name
@@ -1301,8 +1326,8 @@ class EventModule(Base):
     @abc.abstractmethod
     def copy(self):
         raise NotImplementedError()
-        #copy = EventModule(self.sequence_name, self.name)
-        #return self._copy_super_attributes(copy)
+        # copy = EventModule(self.sequence_name, self.name)
+        # return self._copy_super_attributes(copy)
 
     def _copy_super_attributes(self, copy):
         for cmd in self.list_commands:
@@ -1320,9 +1345,7 @@ class KeyEventModule(EventModule):
     _key_name = Column(String(50), name="key_name")
     key_event = Column(String(50), name="key_event")
 
-    __mapper_args__ = {
-        'polymorphic_identity':'KeyEvent'
-    }
+    __mapper_args__ = {"polymorphic_identity": "KeyEvent"}
 
     def __init__(self, key, key_event, name=None, sequence_name=None):
         self.key = key
@@ -1338,10 +1361,10 @@ class KeyEventModule(EventModule):
 
     def copy(self):
         copy = KeyEventModule(
-            key = self.key,
-            key_event = self.key_event,
+            key=self.key,
+            key_event=self.key_event,
             name=self.name,
-            sequence_name=self._sequence_name
+            sequence_name=self._sequence_name,
         )
         return self._copy_super_attributes(copy)
 
@@ -1363,12 +1386,11 @@ class ComEventModule(EventModule):
     _com_type = Column(Integer, name="com_type")  # to be
     # implemented
 
-    __mapper_args__ = {
-        'polymorphic_identity':'ComEvent'
-    }
+    __mapper_args__ = {"polymorphic_identity": "ComEvent"}
 
-    def __init__(self, device, com_type, name_command, match, name=None,
-                 sequence_name=None):
+    def __init__(
+        self, device, com_type, name_command, match, name=None, sequence_name=None
+    ):
         self._sequence_name = None
         self._device = device
         self._com_type = com_type.value  # type ComType
@@ -1400,8 +1422,7 @@ class ComEventModule(EventModule):
         if not self._match_param1:
             return ()
         elif self._match_param3:
-            return (self._match_param1, self._match_param2,
-                    self._match_param3)
+            return (self._match_param1, self._match_param2, self._match_param3)
         elif self._match_param2:
             return (self._match_param1, self._match_param2)
         else:  # self.cmd_parameter1
@@ -1409,7 +1430,7 @@ class ComEventModule(EventModule):
 
     @match_parameters.setter
     def match_parameters(self, *args):  # args, tuple or list
-        if len(args)==1:
+        if len(args) == 1:
             if isinstance(args[0], list) or isinstance(args[0], tuple):
                 args = args[0]
         if len(args) > 0:
@@ -1426,7 +1447,7 @@ class ComEventModule(EventModule):
             name_command=self.name_command,
             match=None,
             name=self.name,
-            sequence_name=self._sequence_name
+            sequence_name=self._sequence_name,
         )
         copy._match_param1 = self._match_param1
         copy._match_param2 = self._match_param2
@@ -1442,23 +1463,19 @@ class ComEventModule(EventModule):
                         if list(self.match_parameters) == data.full_answer[1]:
                             return True
                 elif self._match_regex:
-                    if re.fullmatch(self._match_regex,
-                                    data.recv_answer_string):
+                    if re.fullmatch(self._match_regex, data.recv_answer_string):
                         return True
         return False
 
 
 class ShowEvent(EventModule):
 
-    #play, pasue, jumpnext, next_module ....
+    # play, pasue, jumpnext, next_module ....
 
-    __mapper_args__ = {
-        'polymorphic_identity':'ShowEvent'
-    }
+    __mapper_args__ = {"polymorphic_identity": "ShowEvent"}
 
 
 class EventModuleManager(ManagerBase):
-
     def __init__(self, session):
         super().__init__(session)
         self._elements = self._elements_get_all_from_db()
@@ -1479,8 +1496,11 @@ class EventModuleManager(ManagerBase):
         return None
 
     def _elements_load_from_db_show_name(self, show_name):
-        return self._session.query(EventModule)\
-            .filter(EventModule._sequence_name==show_name).first()
+        return (
+            self._session.query(EventModule)
+            .filter(EventModule._sequence_name == show_name)
+            .first()
+        )
 
     def _elements_get_with_name_from_db(self, name, show_name=None):
         if not show_name:
@@ -1489,21 +1509,20 @@ class EventModuleManager(ManagerBase):
             else:
                 # either show_name or tmp_save_show_name must be set
                 return False
-        return self._session.query(EventModule)\
-            .filter(
-                EventModule._sequence_name==show_name,
-                EventModule._name==name
-            ).first()
+        return (
+            self._session.query(EventModule)
+            .filter(EventModule._sequence_name == show_name, EventModule._name == name)
+            .first()
+        )
 
     def _elements_get_by_id_from_db(self, id):
-        return self._session.query(EventModule)\
-            .filter(EventModule._id==id).first()
+        return self._session.query(EventModule).filter(EventModule._id == id).first()
 
     def _elements_get_all_from_db(self):
         return self._session.query(EventModule).all()
 
 
-class Show():
+class Show:
     """SequenceObjectManager/PlaylistManager
 
     Manages Sequence Object. Media or LogicElements must be in the Database.
@@ -1532,7 +1551,7 @@ class Show():
 
     """
 
-    def __init__(self, project_folder, content_aspect_ratio='c'):
+    def __init__(self, project_folder, content_aspect_ratio="c"):
         self._show_name = None
         self._show_project_folder = os.path.expanduser(project_folder)
         self._session = Show.create_session(self._show_project_folder)
@@ -1607,8 +1626,10 @@ class Show():
             if isinstance(obj.logic_element, LoopEnd):
                 if obj.logic_element.counter < obj.logic_element.cycles:
                     for s in self._sequence:
-                        if isinstance(s.logic_element, LoopStart) \
-                            and s.logic_element.key == obj.logic_element.key:
+                        if (
+                            isinstance(s.logic_element, LoopStart)
+                            and s.logic_element.key == obj.logic_element.key
+                        ):
                             self._current_pos = s.position
                             break
                     obj.logic_element.counter = obj.logic_element.counter + 1
@@ -1645,8 +1666,12 @@ class Show():
         return self._show_load_show_names()
 
     def _show_load_show_names(self, deleted=False):
-        r =  self._session.query(SequenceModule._sequence_name)\
-            .filter(SequenceModule._deleted==deleted).distinct().all()
+        r = (
+            self._session.query(SequenceModule._sequence_name)
+            .filter(SequenceModule._deleted == deleted)
+            .distinct()
+            .all()
+        )
         return [i[0] for i in r]
 
     def show_new(self, name):
@@ -1705,8 +1730,11 @@ class Show():
             else:
                 return False, "error code: show does not exist"
 
-        to_re_name = self._session.query(SequenceModule)\
-            .filter(SequenceModule._sequence_name==old_name2).all()
+        to_re_name = (
+            self._session.query(SequenceModule)
+            .filter(SequenceModule._sequence_name == old_name2)
+            .all()
+        )
 
         for mod in to_re_name:
             mod.sequece_name = new_name
@@ -1715,7 +1743,6 @@ class Show():
         if not old_name2:
             self.show.load(new_name)
         return True
-
 
     def show_close(self):
         self._sequence = list()
@@ -1733,8 +1760,11 @@ class Show():
 
         if del_name in self.show_list:
 
-            to_delte = self._session.query(SequenceModule)\
-                .filter(SequenceModule._sequence_name==del_name).all()
+            to_delte = (
+                self._session.query(SequenceModule)
+                .filter(SequenceModule._sequence_name == del_name)
+                .all()
+            )
             for mod in to_delte:
                 mod.module_delete_self()
             self._session.commit()
@@ -1748,9 +1778,9 @@ class Show():
     def _check_show_name_exists(self, name, num=1):
         """check if name already exists. If True, append a number if"""
         if num > 1:
-            name='{}_{}'.format(name, num)
+            name = "{}_{}".format(name, num)
         if name in self._show_load_show_names():
-            name = self._check_show_name_exists(name, num=num+1)
+            name = self._check_show_name_exists(name, num=num + 1)
         return name
 
     ##### module methods #####
@@ -1764,8 +1794,7 @@ class Show():
                 self._mm.element_add(element)
             else:
                 self._lm.element_add(element)
-        sm = SequenceModule(self._show_name, None,
-            element=element, time=time)
+        sm = SequenceModule(self._show_name, None, element=element, time=time)
         self._module_add_command(sm, commands_delay_tuple)
         return self._module_append_to_pos(sm, pos)
 
@@ -1810,23 +1839,23 @@ class Show():
         l_start, l_end = self._lm.element_make_loop_pair(cycles)
         self._module_add(l_start, pos=pos)
         if pos:
-            return self._module_add(l_end, pos=pos+1)
+            return self._module_add(l_end, pos=pos + 1)
         else:
             return self._module_add(l_end, pos=pos)
 
-    #def add_empty_module(self, pos=None):
+    # def add_empty_module(self, pos=None):
     #    """add a empty module without any elements"""
     #    self.add_module(None, pos)
 
-    #def append_empty_module(self):
+    # def append_empty_module(self):
     #    """add a empty module without any elements at end of sequence"""
     #    self.add_module(None)
 
     def module_move_up(self, pos):
-        return self.module_change_position(pos, pos-1)
+        return self.module_change_position(pos, pos - 1)
 
     def module_move_down(self, pos):
-        return self.module_change_position(pos, pos+1)
+        return self.module_change_position(pos, pos + 1)
 
     def module_change_position(self, old_pos, new_pos):
         module = self._module_get_at_pos(old_pos)
@@ -1922,15 +1951,15 @@ class Show():
         return True
 
     def _module_change_position_end(self, module):
-        return self._module_change_position(module, self.count-1)
+        return self._module_change_position(module, self.count - 1)
 
     def _module_change_position(self, module, new_pos):
         """change position of sequence elements"""
         cur_pos = module.position
         if cur_pos < new_pos:
-            next_pos = cur_pos+1
+            next_pos = cur_pos + 1
         elif cur_pos > new_pos:
-            next_pos = cur_pos-1
+            next_pos = cur_pos - 1
         else:
             self._session.commit()
             return True
@@ -1942,13 +1971,19 @@ class Show():
 
     def _module_load_from_db(self):
         """load show from database"""
-        self._sequence = self._session.query(SequenceModule).\
-            filter(SequenceModule._sequence_name==self._show_name).all()
+        self._sequence = (
+            self._session.query(SequenceModule)
+            .filter(SequenceModule._sequence_name == self._show_name)
+            .all()
+        )
 
     def _event_module_load_from_db(self):
         """load show from database"""
-        self._event_list = self._session.query(EventModule).\
-            filter(EventModule._sequence_name==self._show_name).all()
+        self._event_list = (
+            self._session.query(EventModule)
+            .filter(EventModule._sequence_name == self._show_name)
+            .all()
+        )
 
     def _module_get_with_name(self, name):
         for seqm in self._sequence:
@@ -1993,27 +2028,27 @@ class Show():
             handle a global event that must be handeled emidetly
             > e.g Blury @chapter 10 --> call event pause
         """
-        #gets called by the notify function
-        #compares evnet_name to global events
-        #if True:
+        # gets called by the notify function
+        # compares evnet_name to global events
+        # if True:
         #   signal.send("") send out new event
-        #else:
+        # else:
         #   self.happened_event_queue.put(evnet_name)
         pass
 
     def next(self):
         """returns next module and handles modules with logic elements"""
 
-        #loop through queue until empty
+        # loop through queue until empty
         while not self._happened_event_queue.empty():
             jtte = self._happened_event_queue.get()
             for e in self.jumptotarget_elements:
                 if e.logic_element.id == jtte.id:
                     self._current_pos = e.position
 
-        #increase current position and return new current element
-        if self._current_pos < len(self._sequence)-1:
-            self._current_pos = self._current_pos+1
+        # increase current position and return new current element
+        if self._current_pos < len(self._sequence) - 1:
+            self._current_pos = self._current_pos + 1
             return self.module_current
         else:
             return SequenceModule.viewcontroll_placeholder()
@@ -2025,12 +2060,16 @@ class Show():
             if not os.path.exists(project_folder):
                 os.makedirs(project_folder)
         if check_same_thread:
-            db_file = os.path.join(project_folder, 'vcproject.db3')
+            db_file = os.path.join(project_folder, "vcproject.db3")
         else:
-            db_file = os.path.join(project_folder, 'vcproject.db3') + "?check_same_thread=False"
-        engine = 'sqlite:///'+db_file
+            db_file = (
+                os.path.join(project_folder, "vcproject.db3")
+                + "?check_same_thread=False"
+            )
+        engine = "sqlite:///" + db_file
         some_engine = sqlalchemy.create_engine(engine)
-        Base.metadata.create_all(some_engine,
-            Base.metadata.tables.values(), checkfirst=True)
+        Base.metadata.create_all(
+            some_engine, Base.metadata.tables.values(), checkfirst=True
+        )
         Session = orm.sessionmaker(bind=some_engine)
         return Session()

@@ -6,6 +6,7 @@ import queue
 from enum import Enum
 from blinker import signal
 
+
 class ThreadCommunicationBase(threading.Thread, abc.ABC):
     """Base Class for all communication threads
 
@@ -22,7 +23,7 @@ class ThreadCommunicationBase(threading.Thread, abc.ABC):
         super().__init__(daemon=True, name=name, **kwargs)
         self.q_comand = queue.Queue()
         self.logger = logging.getLogger()
-        self.type_exeption = (OSError)
+        self.type_exeption = OSError
         self.signal = signal("{}_send".format(self.name))
         self.signal.connect(self.subsr_signal_send)
 
@@ -46,22 +47,31 @@ class ThreadCommunicationBase(threading.Thread, abc.ABC):
         while True:
             try:
                 self.listen()
-            except self.type_exeption as ex:  #, ConnectionError, ConnectionRefusedError:
+            except self.type_exeption as ex:  # , ConnectionError, ConnectionRefusedError:
                 if type(ex) is OSError:
-                    self.logger.warning("{}: Communication Failed ({}). New Try in {} second(s)."
-                        .format(self.name, ex.errno, 
-                            ThreadCommunicationBase.retry_interval))
+                    self.logger.warning(
+                        "{}: Communication Failed ({}). New Try in {} second(s).".format(
+                            self.name, ex.errno, ThreadCommunicationBase.retry_interval
+                        )
+                    )
                 else:
-                    self.logger.warning("{}: Communication Failed ({}). New Try in {} second(s). Args: {}."
-                        .format(self.name, type(ex), 
-                            ThreadCommunicationBase.retry_interval, ex.args))
+                    self.logger.warning(
+                        "{}: Communication Failed ({}). New Try in {} second(s). Args: {}.".format(
+                            self.name,
+                            type(ex),
+                            ThreadCommunicationBase.retry_interval,
+                            ex.args,
+                        )
+                    )
                 time.sleep(ThreadCommunicationBase.retry_interval)
             except Exception as ex:
                 try:
                     raise
                 finally:
-                    self.logger.error("Uncaught exception in process '{}'"
-                            .format(self.name), exc_info=(ex))
+                    self.logger.error(
+                        "Uncaught exception in process '{}'".format(self.name),
+                        exc_info=(ex),
+                    )
 
     @abc.abstractmethod
     def listen(self):
@@ -75,13 +85,12 @@ class ThreadCommunicationBase(threading.Thread, abc.ABC):
         pass
 
     @property
-    #@abc.abstractmethod    
+    # @abc.abstractmethod
     def connection_active(self):
         return False
 
 
 class ComPackage(object):
-
     def __init__(self, device, command_obj=None):
         self.device = device
         self.command_obj = command_obj
@@ -96,20 +105,21 @@ class ComPackage(object):
             full_answer = self.full_answer
         else:
             full_answer = ""
-        return "{} - {} - ({}) - {} {}" \
-            .format(self.device, 
-                self.type, 
-                self.command_obj.name if self.command_obj else None,  
-                self.recv_answer, 
-                full_answer)
+        return "{} - {} - ({}) - {} {}".format(
+            self.device,
+            self.type,
+            self.command_obj.name if self.command_obj else None,
+            self.recv_answer,
+            full_answer,
+        )
 
     @property
-    def recv_answer(self):#
+    def recv_answer(self):  #
         if self.recv_answer_byte:
             return self.recv_answer_byte
         else:
             return self.recv_answer_string
-    
+
 
 class ComType(Enum):
     unidentifiable = 0
