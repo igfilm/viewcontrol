@@ -1,6 +1,7 @@
 /logs
 /testing
 /.vscode
+/.idea
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -106,3 +107,4 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+/doc/_build/

@@ -23,7 +23,7 @@ from viewcontrol.version import __version__ as package_version
 class ViewControl(object):
     """ViewControl class.
 
-    See README.md for detailed module description.
+    See README.rst for detailed module description.
 
     """
 
