@@ -1737,7 +1737,7 @@ class Show:
         )
 
         for mod in to_re_name:
-            mod.sequece_name = new_name
+            mod.sequence_name = new_name
         self._session.commit()
 
         if not old_name2:

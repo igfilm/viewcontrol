@@ -1,473 +1,391 @@
-import os
-import shutil
-import sys
-import time
-import unittest
+import pytest
 
+# TODO remove this event type from test
 from pynput.keyboard import Key
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from viewcontrol import show
+import viewcontrol
 from viewcontrol.remotecontrol.threadcommunicationbase import ComType
 
-# if True add a empty file instead of media elememnts
-# WARNING! dont forget run propper test_case before testing the module
-skip_workload = False
 
-test_folder = None
+@pytest.fixture(scope="function")
+def show(project_folder) -> viewcontrol.Show:
+    return viewcontrol.Show(project_folder)
 
 
-class TestShow(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.project_folder = test_folder
-        show.MediaElement._skip_high_workload_functions = skip_workload
-        if os.path.exists(cls.project_folder):
-            shutil.rmtree(cls.project_folder)
+@pytest.fixture(scope="function")
+def show_t(show):
+    show.show_load("testing")
+    return show
 
-    @classmethod
-    def tearDownClass(cls):
-        # shutil.rmtree(cls.project_folder)
-        return
 
-    def setUp(self):
-        self.show = show.Show(TestShow.project_folder)
-
-    def test_1000_show(self):
-        self.assertEqual(len(self.show.show_list), 0)
-        self.show.show_new("testA")
+class TestShow:
+    def test_1000_show(self, show):
+        assert len(show.show_list) == 0
+        show.show_new("testA")
         # still 0 because no element was created
-        self.assertEqual(len(self.show.show_list), 0)
-        self.show.module_add_text("test1", "test1", 1)
-        self.assertEqual(len(self.show.show_list), 1)
-        self.assertEqual(self.show.show_list[0], "testA")
+        assert len(show.show_list) == 0
+        show.module_add_text("test1", "test1", 1)
+        assert len(show.show_list) == 1
+        assert show.show_list[0] == "testA"
 
-    def test_1001_show(self):
-        self.assertEqual(self.show.show_list[0], "testA")
-        self.assertFalse(self.show.show_new("testA"))
-        self.assertFalse(self.show.show_load("testB"))
-        self.assertTrue(self.show.show_new("testB"))
-        self.show.module_add_text("test2", "test2", 2)
-        self.assertEqual(len(self.show.show_list), 2)
-        self.assertTrue(self.show.show_close())
+    def test_1001_show(self, show):
+        assert show.show_list[0] == "testA"
+        assert not show.show_new("testA")
+        assert not show.show_load("testB")
+        assert show.show_new("testB")
+        show.module_add_text("test2", "test2", 2)
+        assert len(show.show_list) == 2
+        assert show.show_close()
 
-    def test_1002_show(self):
-        self.assertTrue(self.show.show_delete("testA"))
-        self.assertEqual(len(self.show.show_list), 1)
-        self.assertFalse(self.show.show_load("testA"))
-        self.assertEqual(self.show.show_list[0], "testB")
-        self.assertIsNone(self.show.show_name)
-        self.assertFalse(self.show.show_delete())
-        self.assertTrue(self.show.show_load("testB"))
-        self.assertTrue(self.show.show_delete())
-        self.assertEqual(len(self.show.show_list), 0)
+    def test_1002_show(self, show):
+        assert show.show_delete("testA")
+        assert len(show.show_list) == 1
+        assert not show.show_load("testA")
+        assert show.show_list[0] == "testB"
+        assert show.show_name is None
+        assert not show.show_delete()
+        assert show.show_load("testB")
+        assert show.show_delete()
+        assert len(show.show_list) == 0
 
-    def test_1003_show(self):
-        self.assertEqual(len(self.show.show_list), 0)
-        self.assertFalse(self.show.show_new("testA"))
-        self.assertEqual(len(self.show.show_list), 0)
-        self.assertFalse(self.show.show_new("testB"))
-        self.assertEqual(len(self.show.show_list), 0)
-        self.assertTrue(self.show.show_new("testC"))
-        self.show.module_add_text("test3", "test3", 3)
-        self.assertEqual(len(self.show.show_list), 1)
-        self.assertFalse(self.show.show_load(None))
+    def test_1003_show(self, show):
+        assert len(show.show_list) == 0
+        assert not show.show_new("testA")
+        assert len(show.show_list) == 0
+        assert not show.show_new("testB")
+        assert len(show.show_list) == 0
+        assert show.show_new("testC")
+        show.module_add_text("test3", "test3", 3)
+        assert len(show.show_list) == 1
+        assert not show.show_load(None)
 
-    def test_1004_show_copy(self):
-        self.assertEqual(len(self.show.show_list), 1)
-        self.assertTrue(self.show.show_copy("testC", "testC_copy"))
-        self.assertEqual(len(self.show.show_list), 2)
-        self.assertTrue(self.show.show_load("testC_copy"))
-        self.assertEqual(self.show.count, 1)
-        self.assertEqual(self.show._module_get_at_pos(0)._media_element_id, 3)
+    def test_1004_show_copy(self, show):
+        assert len(show.show_list) == 1
+        assert show.show_copy("testC", "testC_copy")
+        assert len(show.show_list) == 2
+        assert show.show_load("testC_copy")
+        assert show.count == 1
+        assert show._module_get_at_pos(0)._media_element_id == 3
 
 
-class TestShowPlaylist(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.project_folder = os.path.expanduser("testing")
-        show.MediaElement._skip_high_workload_functions = skip_workload
-        # if os.path.exists(cls.project_folder):
-        #    shutil.rmtree(cls.project_folder)
+def scr_media(data_folder, name) -> str:
+    return str(data_folder.joinpath("media", name))
 
-    @classmethod
-    def tearDownClass(cls):
-        # shutil.rmtree(cls.project_folder)
-        return
 
-    def setUp(self):
-        self.show = show.Show(TestShowPlaylist.project_folder)
-        self.show.show_load("testing")
-        print("")
-        self.t_start = time.time()
+def test_set_skip_workload():
+    viewcontrol.show.MediaElement._skip_high_workload_functions = True
 
-    def tearDown(self):
-        print(
-            "{:<40} - {} s".format(self._testMethodName, time.time() - self.t_start),
-            sep="",
-        )
 
-    def test_1000_show(self):
+class TestShowPlaylist:
+    def test_1000_show(self, project_folder, show_t):
         # is show database created
-        self.assertTrue(os.path.exists(self.project_folder + "/vcproject.db3"))
-        self.assertEqual(self.show.count, 0)
+        assert project_folder.joinpath("vcproject.db3").exists()
+        assert show_t.count == 0
 
-    def test_1101_append_pdf_big(self):
-        self.assertEqual(self.show.count, 0)
-        self.show.show_new("testing")
+    def test_1101_append_pdf_big(self, project_folder, show_t, source_data):
+        assert show_t.count == 0
+        show_t.show_new("testing")
         # add pdf, check if files are created
-        self.show.module_add_still("poster", "media/bbb_poster.pdf", 8)
-        self.assertTrue(os.path.exists(self.project_folder + "/bbb_poster_w.jpg"))
-        self.assertTrue(os.path.exists(self.project_folder + "/bbb_poster_c.jpg"))
-        self.assertEqual(self.show.count, 1)
+        show_t.module_add_still("poster", scr_media(source_data, "bbb_poster.pdf"), 8)
+        assert project_folder.joinpath("bbb_poster_w.jpg").exists()
+        assert project_folder.joinpath("bbb_poster_c.jpg").exists()
+        assert show_t.count == 1
 
-    def test_1102_append_same(self):
-        self.assertEqual(self.show.count, 1)
+    def test_1102_append_same(self, project_folder, show_t, source_data):
+        assert show_t.count == 1
         # add same (source-)file(name) twice , check if counter is added on files
-        self.show.module_add_still("anouncement", "media/bbb_title_anouncement.jpg", 2)
-        self.show.module_add_still(
-            "anouncement_copy", "media/bbb_title_anouncement.jpg", 3
+        show_t.module_add_still(
+            "anouncement", scr_media(source_data, "bbb_title_anouncement.jpg"), 2
         )
-        self.assertTrue(
-            os.path.exists(self.project_folder + "/bbb_title_anouncement_c.jpg")
+        show_t.module_add_still(
+            "anouncement_copy", scr_media(source_data, "bbb_title_anouncement.jpg"), 3
         )
-        self.assertTrue(
-            os.path.exists(self.project_folder + "/bbb_title_anouncement_c_2.jpg")
-        )
-        self.assertTrue(
-            os.path.exists(self.project_folder + "/bbb_title_anouncement_w.jpg")
-        )
-        self.assertTrue(
-            os.path.exists(self.project_folder + "/bbb_title_anouncement_w_2.jpg")
-        )
-        self.assertEqual(self.show.count, 3)
+        assert project_folder.joinpath("bbb_title_anouncement_c.jpg").exists()
+        assert project_folder.joinpath("bbb_title_anouncement_c_2.jpg").exists()
+        assert project_folder.joinpath("bbb_title_anouncement_w.jpg").exists()
+        assert project_folder.joinpath("bbb_title_anouncement_w_2.jpg").exists()
+        assert show_t.count == 3
 
-    def test_1203_delete_same(self):
-        self.assertEqual(self.show.count, 3)
-        self.show.module_remove(2)
-        self.assertEqual(self.show.count, 2)
-        # self.assertEqual(self.media_elements)
+    def test_1203_delete_same(self, show_t):
+        assert show_t.count == 3
+        show_t.module_remove(2)
+        assert show_t.count == 2
+        # assert self.media_elements)
         # check if obj is still in MEdiaElements
 
-    def test_1213_append_identical_name(self):
-        self.assertEqual(self.show.count, 2)
+    def test_1213_append_identical_name(self, show_t, source_data):
+        assert show_t.count == 2
         # try to add same name twice. result should be a two behind name of
         # second sequence module.
-        self.assertTrue(
-            self.show.module_add_still(
-                "bbb_picture", "media/bbb_poster_bunny_big.jpg", 5
-            )
+        assert show_t.module_add_still(
+            "bbb_picture", scr_media(source_data, "bbb_poster_bunny_big.jpg"), 5
         )
-        self.assertTrue(
-            self.show.module_add_still(
-                "bbb_picture", "media/bbb_poster_rodents_big.jpg", 5
-            )
-        )
-        bbb1 = self.show._module_get_with_name("bbb_picture")
-        self.assertIsNotNone(bbb1)
-        self.assertEqual(bbb1.media_element._file_path_c, "bbb_poster_bunny_big_c.jpg")
-        bbb2 = self.show._module_get_with_name("bbb_picture_2")
-        self.assertIsNotNone(bbb2)
-        self.assertEqual(
-            bbb2.media_element._file_path_c, "bbb_poster_rodents_big_c.jpg"
-        )
-        self.assertEqual(self.show.count, 4)
 
-    def test_1214_rename_media(self):
-        self.assertEqual(self.show.count, 4)
-        self.assertTrue(self.show.module_rename(3, "bbb_picture_bunny"))
-        self.assertIsNotNone = self.show._module_get_with_name("bbb_picture_bunny")
+        assert show_t.module_add_still(
+            "bbb_picture", scr_media(source_data, "bbb_poster_rodents_big.jpg"), 5
+        )
+        bbb1 = show_t._module_get_with_name("bbb_picture")
+        assert bbb1 is not None
+        assert bbb1.media_element._file_path_c == "bbb_poster_bunny_big_c.jpg"
+        bbb2 = show_t._module_get_with_name("bbb_picture_2")
+        assert bbb2 is not None
+        assert bbb2.media_element._file_path_c == "bbb_poster_rodents_big_c.jpg"
 
-    def test_1304_append_loop(self):
-        self.assertIsNotNone = self.show._module_get_with_name("bbb_picture_bunny")
+        assert show_t.count == 4
+
+    def test_1214_rename_media(self, show_t):
+        assert show_t.count == 4
+        assert show_t.module_rename(3, "bbb_picture_bunny")
+        assert show_t._module_get_with_name("bbb_picture_bunny") is not None
+
+    def test_1304_append_loop(self, show_t):
+        assert show_t._module_get_with_name("bbb_picture_bunny") is not None
         # add loop and change its position in playlist (this procedure shall be used in GUI to)
-        self.assertTrue(self.show.module_add_loop(3, pos=3))
-        self.assertEqual(self.show._module_get_with_name("#LoopStart_1").position, 3)
-        self.assertEqual(self.show._module_get_with_name("#LoopEnd_1").position, 4)
-        self.assertTrue(self.show.module_move_up(3))
-        self.assertEqual(self.show._module_get_with_name("#LoopStart_1").position, 2)
-        self.assertEqual(self.show._module_get_with_name("#LoopEnd_1").position, 4)
-        self.assertTrue(self.show.module_move_down(4))
-        self.assertEqual(self.show._module_get_with_name("#LoopStart_1").position, 2)
-        self.assertEqual(self.show._module_get_with_name("#LoopEnd_1").position, 5)
+        assert show_t.module_add_loop(3, pos=3)
+        assert show_t._module_get_with_name("#LoopStart_1").position == 3
+        assert show_t._module_get_with_name("#LoopEnd_1").position == 4
+        assert show_t.module_move_up(3)
+        assert show_t._module_get_with_name("#LoopStart_1").position == 2
+        assert show_t._module_get_with_name("#LoopEnd_1").position == 4
+        assert show_t.module_move_down(4)
+        assert show_t._module_get_with_name("#LoopStart_1").position == 2
+        assert show_t._module_get_with_name("#LoopEnd_1").position == 5
 
-    def test_1305_append_jumpto(self):
-        self.assertEqual(self.show.count, 6)
-        self.assertTrue(
-            self.show.module_add_jumptotarget(
-                "skip loop",
-                "event_key_end",
-                commands_delay_tuple=(
-                    show.CommandObject("dimm light", "CommandDmx", "Group10-Intesity"),
-                    30,
+    def test_1305_append_jumpto(self, show_t):
+        assert show_t.count == 6
+        assert show_t.module_add_jumptotarget(
+            "skip loop",
+            "event_key_end",
+            commands_delay_tuple=(
+                viewcontrol.show.CommandObject(
+                    "dimm light", "CommandDmx", "Group10-Intesity"
                 ),
-            )
-        )
-        self.assertEqual(self.show._module_get_at_pos(6).name, "#skip loop")
-        self.assertEqual(self.show.count, 7)
-
-    def test_1306_add_delete_another_jumpto(self):
-        self.assertEqual(self.show.count, 7)
-        self.assertTrue(self.show.module_add_jumptotarget("#skip loop", "event_xy"))
-        self.assertEqual(self.show._module_get_at_pos(7).name, "#skip loop_2")
-
-    def test_1307_rename_logic(self):
-        self.assertEqual(self.show.count, 8)
-        self.assertTrue(self.show.module_rename(7, "xy fuubar"))
-        self.assertEqual(self.show._module_get_at_pos(7).name, "#xy fuubar")
-
-    def test_1308_delete_logic(self):
-        self.assertEqual(self.show._module_get_at_pos(7).name, "#xy fuubar")
-        self.assertTrue(self.show.module_remove(7))
-        self.assertEqual(self.show.count, 7)
-
-    def test_1316_append_text_element(self):
-        self.assertEqual(self.show.count, 7)
-        self.assertTrue(self.show.module_add_text("next", "next at viewntrol", 5))
-        self.assertTrue(os.path.exists(self.project_folder + "/_next.jpg"))
-        self.assertEqual(self.show.count, 8)
-
-    def test_1317_chnage_text(self):
-        self.assertTrue(self.show.module_text_change_text(7, "next at viewcontrol"))
-        self.assertEqual(
-            self.show._module_get_at_pos(7).media_element.text, "next at viewcontrol"
+                30,
+            ),
         )
 
-    def test_1320_append_video(self):
-        self.assertEqual(self.show.count, 8)
-        self.assertTrue(
-            self.show.module_add_video(
-                "clip2_kite", "media/Big_Buck_Bunny_1080p_clip2.avi", t_start=0.1, pos=8
-            )
-        )
-        self.assertTrue(
-            self.show.module_add_video(
-                "clip1_apple", "media/Big_Buck_Bunny_1080p_clip.mp4", pos=8
-            )
-        )
-        self.assertTrue(
-            os.path.exists(self.project_folder + "/Big_Buck_Bunny_1080p_clip2_c.mp4")
-        )
-        self.assertTrue(
-            os.path.exists(self.project_folder + "/Big_Buck_Bunny_1080p_clip2_w.mp4")
-        )
-        self.assertTrue(
-            os.path.exists(self.project_folder + "/Big_Buck_Bunny_1080p_clip_c.mp4")
-        )
-        self.assertTrue(
-            os.path.exists(self.project_folder + "/Big_Buck_Bunny_1080p_clip_w.mp4")
-        )
-        self.assertEqual(self.show._module_get_with_name("clip2_kite").position, 9)
-        self.assertEqual(self.show._module_get_with_name("clip1_apple").position, 8)
-        self.assertEqual(self.show.count, 10)
+        assert show_t._module_get_at_pos(6).name == "#skip loop"
+        assert show_t.count == 7
 
-    def test_1401_add_command(self):
-        self.assertEqual(self.show.count, 10)
+    def test_1306_add_delete_another_jumpto(self, show_t):
+        assert show_t.count == 7
+        assert show_t.module_add_jumptotarget("#skip loop", "event_xy")
+        assert show_t._module_get_at_pos(7).name == "#skip loop_2"
+
+    def test_1307_rename_logic(self, show_t):
+        assert show_t.count == 8
+        assert show_t.module_rename(7, "xy fuubar")
+        assert show_t._module_get_at_pos(7).name == "#xy fuubar"
+
+    def test_1308_delete_logic(self, show_t):
+        assert show_t._module_get_at_pos(7).name == "#xy fuubar"
+        assert show_t.module_remove(7)
+        assert show_t.count == 7
+
+    def test_1316_append_text_element(self, project_folder, show_t):
+        assert show_t.count == 7
+        assert show_t.module_add_text("next", "next at viewntrol", 5)
+        assert project_folder.joinpath("_next.jpg").exists()
+        assert show_t.count == 8
+
+    def test_1317_change_text(self, show_t):
+        assert show_t.module_text_change_text(7, "next at viewcontrol")
+        assert (
+            show_t._module_get_at_pos(7).media_element.text == "next at " "viewcontrol"
+        )
+
+    def test_1320_append_video(self, project_folder, show_t, source_data):
+        assert show_t.count == 8
+        assert show_t.module_add_video(
+            "clip2_kite", "media/Big_Buck_Bunny_1080p_clip2.avi", t_start=0.1, pos=8
+        )
+        assert show_t.module_add_video(
+            "clip1_apple",
+            scr_media(source_data, "Big_Buck_Bunny_1080p_clip.mp4"),
+            pos=8,
+        )
+        assert project_folder.joinpath("Big_Buck_Bunny_1080p_clip2_c.mp4").exists()
+        assert project_folder.joinpath("Big_Buck_Bunny_1080p_clip2_w.mp4").exists()
+        assert project_folder.joinpath("Big_Buck_Bunny_1080p_clip_c.mp4").exists()
+        assert project_folder.joinpath("Big_Buck_Bunny_1080p_clip_w.mp4").exists()
+        assert show_t._module_get_with_name("clip2_kite").position == 9
+        assert show_t._module_get_with_name("clip1_apple").position == 8
+        assert show_t.count == 10
+
+    def test_1401_add_command(self, show_t):
+        assert show_t.count == 10
         commands = [
             (
-                show.CommandObject(
+                viewcontrol.show.CommandObject(
                     "jump to start chapter", "DenonDN500BD", "Track Jump", 1
                 ),
                 0,
             ),
             (
-                show.CommandObject(
+                viewcontrol.show.CommandObject(
                     "swich video to BluRay", "AtlonaATOMESW32", "Set Output", 2, 1
                 ),
                 0,
             ),
         ]
-        self.assertTrue(
-            self.show.module_add_text(
-                "film ab", "FILM AB", 1, commands_delay_tuple=commands
-            )
+        assert show_t.module_add_text(
+            "film ab", "FILM AB", 1, commands_delay_tuple=commands
         )
-        self.assertEqual(self.show.count, 11)
-        self.assertEqual(len(self.show._module_get_at_pos(10).list_commands), 2)
+
+        assert show_t.count == 11
+        assert len(show_t._module_get_at_pos(10).list_commands) == 2
         command2 = (
-            show.CommandObject(
+            viewcontrol.show.CommandObject(
                 "swich video to PC", "AtlonaATOMESW32", "Set Output", 3, 1
             ),
             1,
         )
-        self.assertTrue(self.show.module_add_command_to_pos(0, command2))
-        self.assertEqual(len(self.show._module_get_at_pos(0).list_commands), 1)
+        assert show_t.module_add_command_to_pos(0, command2)
+        assert len(show_t._module_get_at_pos(0).list_commands) == 1
 
-    def test_1402_add_event(self):
-        em1 = show.KeyEventModule(Key.end, "on_press", name="exit loop")
-        em1.jump_to_target_element = self.show.list_jump_to_target[0]
-        self.assertTrue(self.show.event_module_add(em1))
-        self.assertEqual(len(self.show.list_event), 1)
-        self.assertEqual(self.show.list_event[0], em1)
-        em2 = show.ComEventModule(
+    def test_1402_add_event(self, show_t):
+        em1 = viewcontrol.show.KeyEventModule(Key.end, "on_press", name="exit loop")
+        em1.jump_to_target_element = show_t.list_jump_to_target[0]
+        assert show_t.event_module_add(em1)
+        assert len(show_t.list_event) == 1
+        assert show_t.list_event[0] == em1
+        em2 = viewcontrol.show.ComEventModule(
             "DenonDN500BD",
             ComType.message_status,
             "Status",
             ["Pause"],
             name="EOM (End of Movie)",
         )
-        cmd5 = show.CommandObject("play disk", "DenonDN500BD", "Play", None)
+        cmd5 = viewcontrol.show.CommandObject("play disk", "DenonDN500BD", "Play", None)
         em2.command_add((cmd5, 2))
-        self.assertTrue(self.show.event_module_add(em2))
-        self.assertEqual(len(self.show.eventlist), 2)
-        self.assertEqual(len(self.show.list_event), 2)
-        self.assertEqual(self.show.list_event[1], em2)
+        assert show_t.event_module_add(em2)
+        assert len(show_t.eventlist) == 2
+        assert len(show_t.list_event) == 2
+        assert show_t.list_event[1] == em2
 
-    def test_1402_rename_copy_event(self):
-        self.assertEqual(len(self.show.eventlist), 2)
-        self.assertIsNotNone(
-            self.show.event_module_copy(self.show.eventlist[1], "fuubar")
-        )
-        self.assertEqual(len(self.show.eventlist), 3)
-        self.assertEqual(self.show.eventlist[2].name, "fuubar")
-        self.assertNotEqual(self.show.eventlist[1], self.show.eventlist[2])
-        self.assertEqual(self.show.eventlist[1]._device, "DenonDN500BD")
-        self.assertEqual(self.show.eventlist[2]._device, "DenonDN500BD")
-        self.assertEqual(
-            len(self.show.eventlist[1].list_commands),
-            len(self.show.eventlist[2].list_commands),
-        )
-        self.assertIsNotNone(
-            self.show.event_module_copy(self.show.eventlist[0], "fuubar2")
-        )
-        self.assertEqual(len(self.show.eventlist), 4)
-        self.assertEqual(
-            self.show.eventlist[0].jump_to_target_element,
-            self.show.eventlist[3].jump_to_target_element,
-        )
-        self.assertTrue(self.show.event_module_delete(self.show.eventlist[2]))
-        self.assertTrue(self.show.event_module_delete(self.show.eventlist[2]))
-        self.assertEqual(len(self.show.eventlist), 2)
+    def test_1402_rename_copy_event(self, show_t):
+        assert len(show_t.eventlist) == 2
+        assert show_t.event_module_copy(show_t.eventlist[1], "fuubar") is not None
 
-    def test_1500_copy_module(self):
-        self.assertEqual(len(self.show.eventlist), 2)
-        self.assertEqual(len(self.show._module_get_at_pos(0).list_commands), 1)
-        self.assertTrue(self.show.module_copy(10))
-        self.assertNotEqual(
-            self.show._module_get_at_pos(10), self.show._module_get_at_pos(11)
-        )
-        self.assertEqual(self.show.count, 12)
-        self.assertEqual(len(self.show._module_get_at_pos(11).list_commands), 2)
-
-    def test_2001_copy_show(self):
-        self.assertEqual(len(self.show._module_get_at_pos(11).list_commands), 2)
-        self.assertTrue(self.show.show_copy(None, "testing_copy"))
-        self.assertTrue(self.show.show_load("testing_copy"))
-        self.assertEqual(self.show.count, 12)
-        self.assertEqual(len(self.show.eventlist), 2)
-        self.assertEqual(len(self.show._module_get_at_pos(11).list_commands), 2)
-
-    def test_2001_rename_show(self):
-        self.assertTrue(self.show.show_load("testing_copy"))
-        self.assertTrue(self.show.show_rename("testing_copy_renamed"))
-        self.assertEqual(self.show.count, 12)
-        self.assertTrue(
-            self.show.show_list,
-            ["testC", "testC_copy", "testing", "testing_copy_renamed"],
+        assert len(show_t.eventlist) == 3
+        assert show_t.eventlist[2].name == "fuubar"
+        assert not show_t.eventlist[1] == show_t.eventlist[2]
+        assert show_t.eventlist[1]._device == "DenonDN500BD"
+        assert show_t.eventlist[2]._device == "DenonDN500BD"
+        assert len(show_t.eventlist[1].list_commands) == len(
+            show_t.eventlist[2].list_commands
         )
 
-    def test_2003_rename_show_back(self):
-        self.assertTrue(
-            self.show.show_list,
-            ["testC", "testC_copy", "testing", "testing_copy_renamed"],
-        )
-        self.assertTrue(
-            self.show.show_rename("testing_copy", old_name="testing_copy_renamed")
-        )
-        self.assertTrue(
-            self.show.show_list, ["testC", "testC_copy", "testing", "testing_copy"]
-        )
-        self.assertTrue(self.show.show_load("testing_copy"))
-        self.assertEqual(self.show.count, 12)
+        assert show_t.event_module_copy(show_t.eventlist[0], "fuubar2") is not None
 
-    def test_2010_change_command(self):
+        assert len(show_t.eventlist) == 4
+        assert (
+            show_t.eventlist[0].jump_to_target_element
+            == show_t.eventlist[3].jump_to_target_element
+        )
+        assert show_t.event_module_delete(show_t.eventlist[2])
+        assert show_t.event_module_delete(show_t.eventlist[2])
+        assert len(show_t.eventlist) == 2
+
+    def test_1500_copy_module(self, show_t):
+        assert len(show_t.eventlist) == 2
+        assert len(show_t._module_get_at_pos(0).list_commands) == 1
+        assert show_t.module_copy(10)
+        assert not show_t._module_get_at_pos(10) == show_t._module_get_at_pos(11)
+
+        assert show_t.count == 12
+        assert len(show_t._module_get_at_pos(11).list_commands) == 2
+
+    def test_2001_copy_show(self, show_t):
+        assert len(show_t._module_get_at_pos(11).list_commands) == 2
+        assert show_t.show_copy(None, "testing_copy")
+        assert show_t.show_load("testing_copy")
+        assert show_t.count == 12
+        assert len(show_t.eventlist) == 2
+        assert len(show_t._module_get_at_pos(11).list_commands) == 2
+        assert "testing" in show_t.show_list
+
+    def test_2001_rename_show(self, show):
+        assert show.show_load("testing_copy")
+        assert show.show_rename("testing_copy_renamed")
+        assert show.count == 12
+        assert show.show_list == [
+            "testC",
+            "testC_copy",
+            "testing",
+            "testing_copy_renamed",
+        ]
+
+    def test_2003_rename_show_back(self, show_t):
+        assert show_t.show_list == [
+            "testC",
+            "testC_copy",
+            "testing",
+            "testing_copy_renamed",
+        ]
+        assert show_t.show_rename("testing_copy", old_name="testing_copy_renamed")
+        assert show_t.show_list, ["testC", "testC_copy", "testing", "testing_copy"]
+
+        assert show_t.show_load("testing_copy")
+        assert show_t.count == 12
+
+    def test_2010_change_command(self, show):
         pass
 
-    def test_2011_add_by_id(self):
-        self.assertTrue(self.show.module_add_media_by_id(4, 10))
-        self.assertEqual(self.show.count, 13)
-        self.assertEqual(
-            self.show._module_get_at_pos(12).media_element.id,
-            self.show._module_get_at_pos(0).media_element.id,
-        )
-        self.assertTrue(self.show.module_add_command_by_id_to_pos(12, 4, delay=-9999))
-        self.assertEqual(len(self.show.playlist[12].list_commands), 1)
-        self.assertEqual(
-            self.show.playlist[12].list_commands[0][0].id,
-            self.show.playlist[0].list_commands[0][0].id,
-        )
-        self.assertGreater(self.show.playlist[12].list_commands[0][1], 0)
-        self.assertEqual(self.show.playlist[0].list_commands[0][1], 1)
-        self.assertTrue(self.show.module_remove_all_commands_from_pos(12))
-        self.assertEqual(len(self.show.playlist[12].list_commands), 0)
-
-    def test_2011_check_remove_command(self):
-        self.assertEqual(len(self.show.playlist[12].list_commands), 0)
-
-
-class TestShowOptions(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.project_folder = test_folder
-        cls.con_denon = ("192.168.178.201", 9030)
-        cls.con_atlona = ("192.168.178.202", 23)
-
-    @classmethod
-    def tearDownClass(cls):
-        # shutil.rmtree(cls.project_folder)
-        return
-
-    def setUp(self):
-        self.show = show.Show(TestShowOptions.project_folder)
-        self.show.show_load("testing")
-        self.d = self.show.show_options.devices
-
-    def tearDown(self):
-        return
-
-    def test_1000(self):
-        self.assertGreater(len(self.d), 0)
-        self.assertIn("AtlonaATOMESW32", self.d.keys())
-        self.assertIn("DenonDN500BD", self.d.keys())
-        self.assertTrue(
-            self.show.show_options.set_device_property(
-                self.d.get("DenonDN500BD"),
-                enabled=True,
-                connection=TestShowOptions.con_denon,
-            )
-        )
-        self.assertEqual(
-            TestShowOptions.con_denon, self.d.get("DenonDN500BD").connection
+    def test_2011_add_by_id(self, show_t):
+        assert show_t.module_add_media_by_id(4, 10)
+        assert show_t.count == 13
+        assert (
+            show_t._module_get_at_pos(12).media_element.id
+            == show_t._module_get_at_pos(0).media_element.id
         )
 
-    def test_1001(self):
-        self.assertEqual(
-            TestShowOptions.con_denon, self.d.get("DenonDN500BD").connection
-        )
-        self.assertTrue(self.d.get("DenonDN500BD").enabled)
-        self.assertFalse(self.d.get("AtlonaATOMESW32").enabled)
-        self.assertTrue(
-            self.show.show_options.set_device_property(
-                self.d.get("AtlonaATOMESW32"),
-                enabled=True,
-                connection=TestShowOptions.con_atlona,
-            )
+        assert show_t.module_add_command_by_id_to_pos(12, 4, delay=-9999)
+        assert len(show_t.playlist[12].list_commands) == 1
+        assert (
+            show_t.playlist[12].list_commands[0][0].id
+            == show_t.playlist[0].list_commands[0][0].id
         )
 
+        assert show_t.playlist[12].list_commands[0][1] > 0
+        assert show_t.playlist[0].list_commands[0][1] == 1
+        assert show_t.module_remove_all_commands_from_pos(12)
+        assert len(show_t.playlist[12].list_commands) == 0
 
-if __name__ == "__main__":
+    def test_2011_check_remove_command(self, show_t):
+        assert len(show_t.playlist[12].list_commands) == 0
 
-    abspath = os.path.abspath(os.path.expanduser(os.path.curdir))
-    absplit = os.path.split(abspath)
-    if absplit[1] == "test":
-        test_folder = os.path.join(absplit[0], "testing")
-        os.chdir("..")
-    elif absplit[1] == "viewcontrol":
-        test_folder = os.path.join(abspath, "testing")
-    else:
-        print("project folder is not created in default location (viewcontrol/testing)")
-        test_folder = abspath
 
-    print("Using Project Folder '{}'".format(test_folder))
-    unittest.main(failfast=True)
+class TestShowOptions:
+
+    con_denon = ("192.168.178.201", 9030)
+    con_atlona = ("192.168.178.202", 23)
+
+    def test_1000(self, show):
+        assert len(show.show_options.devices) > 0
+        assert "AtlonaATOMESW32" in show.show_options.devices.keys()
+        assert "DenonDN500BD" in show.show_options.devices.keys()
+        assert show.show_options.set_device_property(
+            show.show_options.devices.get("DenonDN500BD"),
+            enabled=True,
+            connection=TestShowOptions.con_denon,
+        )
+
+        assert (
+            TestShowOptions.con_denon
+            == show.show_options.devices.get("DenonDN500BD").connection
+        )
+
+    def test_1001(self, show):
+        assert (
+            TestShowOptions.con_denon
+            == show.show_options.devices.get("DenonDN500BD").connection
+        )
+
+        assert show.show_options.devices.get("DenonDN500BD").enabled
+        assert not show.show_options.devices.get("AtlonaATOMESW32").enabled
+        assert show.show_options.set_device_property(
+            show.show_options.devices.get("AtlonaATOMESW32"),
+            enabled=True,
+            connection=TestShowOptions.con_atlona,
+        )
