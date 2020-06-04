@@ -11,7 +11,10 @@ import time
 
 import yaml
 from blinker import signal
-from pynput import keyboard
+
+# run in headless environment (will be useful when adding video stream support)
+if os.name == "posix" and "DISPLAY" in os.environ:
+    from pynput import keyboard
 
 import viewcontrol.show as show
 from viewcontrol.playback.processmpv import ProcessMpv, ThreadMpv
@@ -51,7 +54,7 @@ class ViewControl(object):
             "-r",
             "--content_aspect_ratio",
             action="store",
-            choices=["c", "cinescope", "21:9", "w", "widescreen", "16:9"],
+            choices=["c", "cinemascope", "21:9", "w", "widescreen", "16:9"],
             help="initial content aspect ratio of movie played by player",
         )
         parser.add_argument(
@@ -108,7 +111,7 @@ class ViewControl(object):
             "version": 1,
             "disable_existing_loggers": True,
             "handlers": {
-                "queue": {"class": "logging.handlers.QueueHandler", "queue": q,},
+                "queue": {"class": "logging.handlers.QueueHandler", "queue": q},
             },
             "root": {"level": "DEBUG", "handlers": ["queue"]},
         }
@@ -217,11 +220,14 @@ class ViewControl(object):
         self.playing = threading.Event()
         self.playing.set()
 
-        # listen to all keypress events. Event generator for Testing.
-        listener = keyboard.Listener(on_press=self.on_press, on_release=self.on_release)
-        listener.setName("key_listener")
-        listener.setDaemon(True)
-        listener.start()
+        if "pyinput" not in sys.modules:
+            # listen to all keypress events
+            listener = keyboard.Listener(
+                on_press=self.on_press, on_release=self.on_release
+            )
+            listener.setName("key_listener")
+            listener.setDaemon(True)
+            listener.start()
 
     def main(self):
         """
@@ -398,43 +404,45 @@ class ViewControl(object):
             self.sig_cmd_prop.send(data)
             self.event_queue.put(data)
 
-    def thread_event_system(self):
-        """Thread: event system for user defined events
+    if "pyinput" not in sys.modules:
 
-        compares every received communication package with user defined
-        event list. If event matches, run/trigger in show.EventModule
-        specified action.
+        def thread_event_system(self):
+            """Thread: event system for user defined events
 
-        """
-        while True:
-            data = self.event_queue.get(block=True)
-            if isinstance(data, ComPackage):  # ComEvent
-                etype = show.ComEventModule
-            elif isinstance(data, tuple) and data[0] == "KeyEvent":  # KeyEvent
-                etype = show.KeyEventModule
-            else:
-                return
-            for mod in self.playlist.eventlist:
-                if isinstance(mod, etype):
-                    if mod.check_event(data):
-                        for cmd_tpl in mod.list_commands:
-                            self.sig_cmd_command.send(cmd_tpl)
-                        if mod.jump_to_target_element:
-                            self.playlist.notify(mod.jump_to_target_element)
+            compares every received communication package with user defined
+            event list. If event matches, run/trigger in show.EventModule
+            specified action.
 
-    def on_press(self, key):
-        """pynput event listener: key event on press"""
-        try:
-            self.logger.debug("alphanumeric key {0} pressed".format(key))
-        except AttributeError:
-            self.logger.debug("special key {0} pressed".format(key))
+            """
+            while True:
+                data = self.event_queue.get(block=True)
+                if isinstance(data, ComPackage):  # ComEvent
+                    etype = show.ComEventModule
+                elif isinstance(data, tuple) and data[0] == "KeyEvent":  # KeyEvent
+                    etype = show.KeyEventModule
+                else:
+                    return
+                for mod in self.playlist.eventlist:
+                    if isinstance(mod, etype):
+                        if mod.check_event(data):
+                            for cmd_tpl in mod.list_commands:
+                                self.sig_cmd_command.send(cmd_tpl)
+                            if mod.jump_to_target_element:
+                                self.playlist.notify(mod.jump_to_target_element)
 
-        if key == keyboard.Key.page_down:
-            self.player_pause()
-        elif key == keyboard.Key.page_up:
-            self.player_resume()
+        def on_press(self, key):
+            """pynput event listener: key event on press"""
+            try:
+                self.logger.debug("alphanumeric key {0} pressed".format(key))
+            except AttributeError:
+                self.logger.debug("special key {0} pressed".format(key))
 
-        self.event_queue.put(("KeyEvent", key, "on_press"))
+            if key == keyboard.Key.page_down:
+                self.player_pause()
+            elif key == keyboard.Key.page_up:
+                self.player_resume()
+
+            self.event_queue.put(("KeyEvent", key, "on_press"))
 
     def on_release(self, key):
         """pynput event listener: key event on release"""

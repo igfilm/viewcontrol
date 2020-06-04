@@ -6,9 +6,13 @@ import pickle
 import pkgutil
 import queue
 import re
+import sys
 from shutil import copyfile
 
-import pynput
+# run in headless environment
+if os.name == "posix" and "DISPLAY" in os.environ:
+    import pynput
+
 import sqlalchemy
 from moviepy.video.VideoClip import ColorClip
 from moviepy.video.compositing.CompositeVideoClip import CompositeVideoClip
@@ -1342,26 +1346,21 @@ class EventModule(Base):
 
 class KeyEventModule(EventModule):
 
-    _key_name = Column(String(50), name="key_name")
+    key_name = Column(String(50), name="key_name")
     key_event = Column(String(50), name="key_event")
 
     __mapper_args__ = {"polymorphic_identity": "KeyEvent"}
 
-    def __init__(self, key, key_event, name=None, sequence_name=None):
-        self.key = key
-        self._key_name = key.name
+    def __init__(self, key_name, key_event, name=None, sequence_name=None):
+        self.key_name = key_name
         self.key_event = key_event
         if not name:
-            name = "{}-{}".format(self._key_name, self.key_event)
+            name = "{}-{}".format(self.key_name, self.key_event)
         super().__init__(sequence_name, name)
-
-    @orm.reconstructor
-    def __load_enum(self):
-        self.key = pynput.keyboard.Key[self._key_name]
 
     def copy(self):
         copy = KeyEventModule(
-            key=self.key,
+            key_name=self.key_name,
             key_event=self.key_event,
             name=self.name,
             sequence_name=self._sequence_name,
@@ -1369,9 +1368,11 @@ class KeyEventModule(EventModule):
         return self._copy_super_attributes(copy)
 
     def check_event(self, data):
-        if self.key == data[1]:
-            if self.key_event == data[2]:
-                return True
+        if "pyinput" not in sys.modules:
+            key = self.key = pynput.keyboard.Key[self._key_name]
+            if key == data[1]:
+                if self.key_event == data[2]:
+                    return True
         return False
 
 

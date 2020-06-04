@@ -1,8 +1,5 @@
 import pytest
 
-# TODO remove this event type from test
-from pynput.keyboard import Key
-
 import viewcontrol
 from viewcontrol.remotecontrol.threadcommunicationbase import ComType
 
@@ -72,8 +69,9 @@ def scr_media(data_folder, name) -> str:
     return str(data_folder.joinpath("media", name))
 
 
-def test_set_skip_workload():
-    viewcontrol.show.MediaElement._skip_high_workload_functions = True
+def test_set_skip_workload(cmdopt_no_load):
+    if cmdopt_no_load:
+        viewcontrol.show.MediaElement._skip_high_workload_functions = True
 
 
 class TestShowPlaylist:
@@ -95,10 +93,10 @@ class TestShowPlaylist:
         assert show_t.count == 1
         # add same (source-)file(name) twice , check if counter is added on files
         show_t.module_add_still(
-            "anouncement", scr_media(source_data, "bbb_title_anouncement.jpg"), 2
+            "announcement", scr_media(source_data, "bbb_title_anouncement.jpg"), 2
         )
         show_t.module_add_still(
-            "anouncement_copy", scr_media(source_data, "bbb_title_anouncement.jpg"), 3
+            "announcement_copy", scr_media(source_data, "bbb_title_anouncement.jpg"), 3
         )
         assert project_folder.joinpath("bbb_title_anouncement_c.jpg").exists()
         assert project_folder.joinpath("bbb_title_anouncement_c_2.jpg").exists()
@@ -111,7 +109,7 @@ class TestShowPlaylist:
         show_t.module_remove(2)
         assert show_t.count == 2
         # assert self.media_elements)
-        # check if obj is still in MEdiaElements
+        # check if obj is still in MediaElements
 
     def test_1213_append_identical_name(self, show_t, source_data):
         assert show_t.count == 2
@@ -140,7 +138,8 @@ class TestShowPlaylist:
 
     def test_1304_append_loop(self, show_t):
         assert show_t._module_get_with_name("bbb_picture_bunny") is not None
-        # add loop and change its position in playlist (this procedure shall be used in GUI to)
+        # add loop and change its position in playlist
+        # (this procedure shall be used in GUI to)
         assert show_t.module_add_loop(3, pos=3)
         assert show_t._module_get_with_name("#LoopStart_1").position == 3
         assert show_t._module_get_with_name("#LoopEnd_1").position == 4
@@ -158,7 +157,7 @@ class TestShowPlaylist:
             "event_key_end",
             commands_delay_tuple=(
                 viewcontrol.show.CommandObject(
-                    "dimm light", "CommandDmx", "Group10-Intesity"
+                    "dim light", "CommandDmx", "Group10-Intensity"
                 ),
                 30,
             ),
@@ -184,7 +183,7 @@ class TestShowPlaylist:
 
     def test_1316_append_text_element(self, project_folder, show_t):
         assert show_t.count == 7
-        assert show_t.module_add_text("next", "next at viewntrol", 5)
+        assert show_t.module_add_text("next", "next at viewcontrol", 5)
         assert project_folder.joinpath("_next.jpg").exists()
         assert show_t.count == 8
 
@@ -197,7 +196,10 @@ class TestShowPlaylist:
     def test_1320_append_video(self, project_folder, show_t, source_data):
         assert show_t.count == 8
         assert show_t.module_add_video(
-            "clip2_kite", "media/Big_Buck_Bunny_1080p_clip2.avi", t_start=0.1, pos=8
+            "clip2_kite",
+            scr_media(source_data, "Big_Buck_Bunny_1080p_clip2.avi"),
+            t_start=0.1,
+            pos=8,
         )
         assert show_t.module_add_video(
             "clip1_apple",
@@ -223,7 +225,7 @@ class TestShowPlaylist:
             ),
             (
                 viewcontrol.show.CommandObject(
-                    "swich video to BluRay", "AtlonaATOMESW32", "Set Output", 2, 1
+                    "switch video to BluRay", "AtlonaATOMESW32", "Set Output", 2, 1
                 ),
                 0,
             ),
@@ -236,7 +238,7 @@ class TestShowPlaylist:
         assert len(show_t._module_get_at_pos(10).list_commands) == 2
         command2 = (
             viewcontrol.show.CommandObject(
-                "swich video to PC", "AtlonaATOMESW32", "Set Output", 3, 1
+                "switch video to PC", "AtlonaATOMESW32", "Set Output", 3, 1
             ),
             1,
         )
@@ -244,7 +246,7 @@ class TestShowPlaylist:
         assert len(show_t._module_get_at_pos(0).list_commands) == 1
 
     def test_1402_add_event(self, show_t):
-        em1 = viewcontrol.show.KeyEventModule(Key.end, "on_press", name="exit loop")
+        em1 = viewcontrol.show.KeyEventModule("end", "on_press", name="exit loop")
         em1.jump_to_target_element = show_t.list_jump_to_target[0]
         assert show_t.event_module_add(em1)
         assert len(show_t.list_event) == 1
