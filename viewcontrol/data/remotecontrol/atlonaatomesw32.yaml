@@ -1,0 +1,107 @@
+#List of Commands for the Atlona AT-OMW-SW32
+
+- !CommandTemplate
+  name: InputStatus
+  description: Displays the status for each input.
+  request_object: 'InputStatus'
+  command_composition: null
+  answer_analysis: 'InputStatus (\d)(\d)(\d)'
+  argument_mappings: null
+
+- !CommandTemplate
+  name: Status
+  description: Displays the current route status.
+  request_object: 'Status'
+  command_composition: null
+  answer_analysis: 'x(\d)AVx1,x(\d)AVx2'
+  argument_mappings: null
+
+- !CommandTemplate
+  name: Set Output
+  description: "Switch audio and video input to output. 0:Input 1:Output"
+  request_object: null
+  command_composition: 'x{0}AVx{1}'
+  answer_analysis: 'x(\d)AVx(\d)'
+  argument_mappings: null
+
+- !CommandTemplate
+  name: Lock
+  description: "Locks the front panel of the matrix so no buttons are active."
+  request_object: null
+  command_composition: 'Lock'
+  answer_analysis: 'Lock'
+  argument_mappings: null
+
+- !CommandTemplate
+  name: Unlock
+  description: "Unlocks the front panel of the matrix, enabling the buttons again."
+  request_object: null
+  command_composition: 'Unlock'
+  answer_analysis: 'Unlock'
+  argument_mappings: null
+
+- !CommandTemplate
+  name: PWSTA
+  description: "Displays the power status of the matrix."
+  request_object: 'PWSTA'
+  command_composition: null
+  answer_analysis: '((?:PWON)|(?:PWOFF))'
+  argument_mappings: null    
+
+- !CommandTemplate
+  name: PWON
+  description: "Turns the unit on. Front panel LED will illuminate blue when on."
+  request_object: null
+  command_composition: 'PWON'
+  answer_analysis: 'PWON'
+  argument_mappings: null
+
+- !CommandTemplate
+  name: PWOFF
+  description: "Turns the unit off. Front panel LED will illuminate red when off."
+  request_object: null
+  command_composition: 'PWOFF'
+  answer_analysis: 'PWOFF'
+  argument_mappings: null
+
+- !CommandTemplate
+  name: CommaWait
+  description: "Enable/Disable a comma adding a 5 second delay between commands. Default is on."
+  request_object: null
+  command_composition: 'CommaWait {}'
+  answer_analysis: 'CommaWait (\w{2,3})'
+  argument_mappings:
+    'on': 'on'
+    'off': 'off'
+    'sta': 'standart'
+
+- !CommandTemplate
+  name: Blink
+  description: "Enable/Disable blinking of the front panel POWER LED"
+  request_object: null
+  command_composition: 'Blink {}'
+  answer_analysis: 'Blink (\w{2,3})'
+  argument_mappings:
+    'on': 'on'
+    'off': 'off'
+    'sta': 'standart'
+
+- !CommandTemplate
+  name: DispBtn
+  description: "Sets the command triggered through display control (set in the webGUI)"
+  request_object: null
+  command_composition: 'DispBtn {}'
+  answer_analysis: 'DispBtn (\w{2,3})'
+  argument_mappings:
+    'on': 'on'
+    'off': 'off'
+    'sta': 'standart'
+    'tog': 'toogle'
+
+- !CommandTemplate
+    name: System sta
+    description: "Displays the current device information such as model number, IP, firmware, hostname, etc."
+    request_object: null
+    command_composition: 'System sta'
+    answer_analysis: null
+    argument_mappings: null

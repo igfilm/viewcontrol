@@ -1,0 +1,88 @@
+# Partial List of Commands for the Behringer X32 console
+
+- !CommandTemplate
+  name: SetMuteGroup
+  description: Set mute group on or off
+  request_object: null
+  command_composition: '/config/mute/{}'
+  answer_analysis: '/config/mute/(\d)'
+  argument_mappings:
+    "group": [1,2,3,4,5,6]
+    "onoff":
+      "ON": 1
+      "OFF": 0
+
+
+
+- !CommandTemplate
+  name: Set Mix Fader Level
+  description: Set Fader (01:32) Level 0-1
+  request_object: null
+  command_composition: '/ch/{0:02d}/mix/fader'
+  answer_analysis: '/ch/(\d\d)/mix/fader'
+  argument_mappings:
+    "fader": "int"
+    "level": "float"
+
+- !CommandTemplate
+  name: Set Mix On
+  description: Set Fader (01:32) Level 0-1
+  request_object: null
+  command_composition: '/ch/{0:02d}/mix/on'
+  answer_analysis: '/ch/(\d\d)/mix/on'
+  argument_mappings:
+    "onoff":
+      "ON": 1
+      "OFF": 0
+
+- !CommandTemplate
+  name: Info
+  description: null
+  request_object: '/info'
+  command_composition: null
+  answer_analysis: '/info'
+  argument_mappings: null
+
+- !CommandTemplate
+  name: Status
+  description: null
+  request_object: '/status'
+  command_composition: null
+  answer_analysis: '/status'
+  argument_mappings: null
+
+- !CommandTemplate
+  name: XRemote
+  description: null
+  request_object: '/xremote'
+  command_composition: null
+  answer_analysis: null
+  argument_mappings: null
+
+- !CommandTemplate
+  name: Set Fader Level
+  description: Set Fader (01:32) Level 0-1
+  request_object: null
+  command_composition: '/ch/{0:02d}/mix/fader'
+  answer_analysis: null
+  argument_mappings:
+    "fader": "int"
+    "level": "float"
+
+
+
+
+- !CommandTemplate
+  name: TestAll
+  description: Displays the status for each input.
+  request_object: null
+  command_composition: '/config/mute/{}'
+  answer_analysis: null
+  argument_mappings:
+    "group": [1,2,3,4,5,6]
+    "onoff":
+      "ON": "ON"
+      "OFF": "OFF"
+    "level": "int"
+    "strings": ["fuu", "bar"]
+
