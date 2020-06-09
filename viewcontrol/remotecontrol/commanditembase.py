@@ -6,7 +6,6 @@ import yaml
 
 
 class CommandItem:
-
     def __init__(self, device, command):
         self.device = device
         self.command = command
@@ -21,16 +20,21 @@ class CommandSendItem(CommandItem):
         arguments (dict or tuple): arguments to be send of any type that is supported by
             device. If a dict is used order does not matter. A tuple will be parsed into
             the arguments in the order they are.
+        delay (float): delay to send signal (handled in ProcessCmd)
         request (bool): true if request object has to be used otherwise
             command_composition string will be used. Defaults to False.
 
     For Attributes see Arguments. Attributes are identical with arguments.
     """
 
-    def __init__(self, device, command, arguments=(), request=True):
+    def __init__(self, device, command, arguments=(), delay=0, request=True):
         super().__init__(device, command)
         self.arguments = arguments
+        self.delay = delay
         self.request = request
+
+    def __str__(self):
+        return f"{self.device}({self.command})-{self.arguments}-request:{self.request}"
 
 
 class CommandRecvItem:

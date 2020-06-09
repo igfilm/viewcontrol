@@ -8,7 +8,9 @@ import threading
 from blinker import signal
 
 from .threadcommunicationbase import ThreadCommunicationBase
+from .commanditembase import CommandSendItem
 from . import supported_devices
+from ..util import timing
 
 
 class ProcessCmd(multiprocessing.Process):
@@ -21,7 +23,7 @@ class ProcessCmd(multiprocessing.Process):
         device_options,
         stop_event,
         logger_config,
-        **kwargs
+        **kwargs,
     ):
         super().__init__(name="ProcessCmd", **kwargs)
         self._dummy = CommandProcess(
@@ -129,28 +131,31 @@ class CommandProcess:
                 try:
                     command_item = self.queue_command.get(block=True, timeout=0.1)
                     logging.debug("got item")
-                    self.send_to_thread(command_item)
+
+                    if isinstance(command_item, str):
+                        # command item is a command to pause/resume the delay timers
+                        if command_item == "pause":
+                            [t.pause() for t in self.timers]
+                        elif command_item == "resume":
+                            [t.resume() for t in self.timers]
+                        elif command_item == "next":
+                            pass
+                        continue
+                    else:
+                        # command item is a actual CommandItem
+                        if command_item.delay == 0:
+                            self.send_to_thread(command_item)
+                        else:
+                            t = timing.RenewableTimer(
+                                command_item.delay, self.send_to_thread, command_item
+                            )
+                            t.start()
+                            self.timers.append(t)
+
                 except queue.Empty:
                     continue
-                # if isinstance(cmd_tpl, str):
-                #     if cmd_tpl == "pause":
-                #         [t.pause for t in self.timers]
-                #     elif cmd_tpl == "resume":
-                #         [t.resume for t in self.timers]
-                #     elif cmd_tpl == "next":
-                #         pass
-                #     continue
 
-                # if cmd_tpl[1] == 0:
-                #     self.send_to_thread(cmd_tpl[0])
-                # else:
-                #     t = timing.RenewableTimer(
-                #         cmd_tpl[1], self.send_to_thread, cmd_tpl[0]
-                #     )
-                #     t.start()
-                #     self.timers.append(t)
-
-
+            [t.cancel() for t in self.timers]
             self.logger.info("stop flag set. terminating processcmd")
 
         except Exception as e:

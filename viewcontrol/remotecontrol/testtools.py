@@ -70,6 +70,7 @@ class Application(tk.Frame):
                 self.selcted_command.name,
                 arguments=args,
                 request=False,
+                delay=5
             )
         )
 
@@ -82,6 +83,7 @@ class Application(tk.Frame):
                 self.selcted_command.name,
                 arguments=args,
                 request=True,
+                delay=10
             )
         )
 
