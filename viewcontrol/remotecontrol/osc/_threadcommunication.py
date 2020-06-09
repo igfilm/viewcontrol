@@ -4,11 +4,12 @@ from pythonosc.dispatcher import Dispatcher
 from pythonosc.osc_server import ThreadingOSCUDPServer
 from pythonosc.udp_client import SimpleUDPClient
 
-from viewcontrol.remotecontrol.threadcommunicationbase import (
-    ThreadCommunicationBase,
-    ComType,
-)
-from ..commanditembase import CommandItem, CommandAnswerItem, format_arg_count
+from ..threadcommunicationbase import ThreadCommunicationBase
+from ..threadcommunicationbase import ComType
+
+from ..commanditembase import CommandSendItem
+from ..commanditembase import CommandRecvItem
+from ..commanditembase import format_arg_count
 
 
 class ThreadCommunication(ThreadCommunicationBase):
@@ -40,7 +41,7 @@ class ThreadCommunication(ThreadCommunicationBase):
             command_item = self.q_comand.get(block=True)
             address, value = self._compose(command_item)
             if not address:
-                cai = CommandAnswerItem(
+                cai = CommandRecvItem(
                     self.name, command_item.name, (), ComType.failed
                 )
                 self._put_into_answer_queue(cai)
@@ -61,19 +62,25 @@ class ThreadCommunication(ThreadCommunicationBase):
         if there are one. Rest of the arguments are returned as new tuple.
 
         Args:
-            cmd_item (CommandItem): CommandItem to be composed from.
+            cmd_item (CommandSendItem): CommandItem to be composed from.
 
         """
 
+        command_template = self.dict_command_template[cmd_item.command]
         if cmd_item.request:
-            address = cmd_item.command_template.request_object
+            address = command_template.request_object
         else:
-            address = cmd_item.command_template.command_composition
+            address = command_template.command_composition
+
+        if isinstance(cmd_item.arguments, dict):
+            arguments = command_template.sorted_tuple_from_dict(cmd_item.arguments)
+        else:
+            arguments = cmd_item.arguments
 
         try:
             address_arg_count = format_arg_count(address)
-            arg_address_tuple = cmd_item.arguments[:address_arg_count]
-            arg_argument_tuple = cmd_item.arguments[address_arg_count:]
+            arg_address_tuple = arguments[:address_arg_count]
+            arg_argument_tuple = arguments[address_arg_count:]
             if arg_address_tuple:
                 address = address.format(*arg_address_tuple)
 
@@ -87,7 +94,7 @@ class ThreadCommunication(ThreadCommunicationBase):
                 return address, list(arg_argument_tuple)
         except TypeError as ex:
             self.logger.warning(
-                f"error compoing message {address}:{cmd_item.arguments}. Error "
+                f"error composing message {address}:{cmd_item.arguments}. Error "
                 f"Message: {ex}"
             )
             return None, None
@@ -101,46 +108,59 @@ class ThreadCommunication(ThreadCommunicationBase):
 
         self.logger.debug(f"analyzing {address} with args {args}")
 
-        cmd_item = None
+        m = None
+        cmd_template = None
+        in_last_composed = False
 
         try:
-            m = re.search(self.last_composed.command_template.answer_analysis, address)
-            if not m and ThreadCommunication.dict_command_template:
-                for cmd in ThreadCommunication.dict_command_template:
-                    m = re.search(cmd.answer_analysis, address)
+            command_template = self.dict_command_template[self.last_composed.command]
+            answer_analysis_last = command_template.answer_analysis
+            if answer_analysis_last:
+                m = re.search(answer_analysis_last, address)
+                cmd_template = self.last_composed.command_template
+                in_last_composed = True
+
+            dict_template = self.dict_command_template
+            if not m and dict_template:
+                for name, command_template in dict_template.items():
+                    if not command_template.answer_analysis:
+                        continue
+                    m = re.search(command_template.answer_analysis, address)
                     if m:
-                        cmd_item = cmd
+                        cmd_template = command_template
                         break
+
         except TypeError as ex:
             self.logger.warning(
-                f"error analyzing message {address}:{args}. Error " f"Message: {ex}"
+                f"error analyzing message {address}:{args}. Error Message: {ex}"
             )
-            cai = CommandAnswerItem(
+            cai = CommandRecvItem(
                 self.name, None, (address, *args), ComType.unidentifiable
             )
             self._put_into_answer_queue(cai)
             return
 
         if m:
-            values = tuple(m.groups()) + args
+            values = cmd_template.create_arg_dict(tuple(m.groups()) + args)
         else:
-            values = args
+            values = cmd_template.create_arg_dict(args)
 
-        self.logger.debug(f"recived {address} with {values}")
+        self.logger.debug(f"received {address} with {values}")
 
-        if not cmd_item:  # match was found in self.last_composed
+        if in_last_composed:  # match was found in self.last_composed
             command = self.last_composed.command_template.name
-            mt = ComType.message_status
-        elif m:  # match was found in dict_command_template
-            command = cmd_item.name
-            if cmd_item.request:
+            if self.last_composed.request:
                 mt = ComType.request_success
             else:
                 mt = ComType.command_success
+        elif m:  # match was found in dict_command_template
+            command = cmd_template.name
+            mt = ComType.message_status
         else:  # address could not be associated with any command
             command = None
+            values = (address, values)
             mt = ComType.unidentifiable
 
-        cai = CommandAnswerItem(self.name, command, values, mt)
+        cai = CommandRecvItem(self.name, command, values, mt)
 
         self._put_into_answer_queue(cai)

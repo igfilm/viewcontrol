@@ -1,50 +1,54 @@
 import logging
 import pathlib
-import re
 import string
 
 import yaml
 
 
 class CommandItem:
-    """
+
+    def __init__(self, device, command):
+        self.device = device
+        self.command = command
+
+
+class CommandSendItem(CommandItem):
+    """Object holding content of messages to be send and additional information.
 
     Args:
-        device (str)
-        command_template (CommandTemplate):
-        arguments (tuple):
+        device (str): name representation of device.
+        command (str): name representation of command.
+        arguments (dict or tuple): arguments to be send of any type that is supported by
+            device. If a dict is used order does not matter. A tuple will be parsed into
+            the arguments in the order they are.
+        request (bool): true if request object has to be used otherwise
+            command_composition string will be used. Defaults to False.
 
+    For Attributes see Arguments. Attributes are identical with arguments.
     """
 
-    def __init__(self, device, command_template, arguments=(), request=True):
-        self.device = device
-        self.command_template = command_template
+    def __init__(self, device, command, arguments=(), request=True):
+        super().__init__(device, command)
         self.arguments = arguments
         self.request = request
 
-    @property
-    def name(self):
-        return self.command_template.name
 
-
-class CommandAnswerItem:
-    """
+class CommandRecvItem:
+    """Object holding content of received messages and additional information.
 
     Args:
-        device (str):
-        command (str or None): none if command could nut be mapped
-        values (dict or tuple): tuple if command is None
+        device (str): name representation of device.
+        command (str): name representation of command.
+        values (dict or tuple): tuple if command is None.
+        message_type (ComType): condition under which message was received.
 
-    Attributes:
-        arguments (tuple or None)
-
+    For Attributes see Arguments. Attributes are identical with arguments.
     """
 
     def __init__(self, device, command, values, message_type):
         self.device = device
         self.command = command
         self.values = values
-        self.arguments = None
         self.message_type = message_type
 
     def __str__(self):
@@ -66,7 +70,6 @@ class CommandTemplate(yaml.YAMLObject):
         answer_analysis (obj): object holding information how to extract data from
             received message. Simplest implementation is be a regex string with
             capture groups. Trivial implementation is just passing the value.
-        answer_types (str): TODO is that a good idea
         argument_mappings (list of dict): assignment of human readable responses to
             command objects/strings or discrete ranges. Must be a list where the dict
             position in list corresponds to argument position. For continues ranges use
@@ -113,7 +116,7 @@ class CommandTemplate(yaml.YAMLObject):
         if isinstance(mapping, list):  # discrete values
             return type(mapping[0])
         elif isinstance(mapping, dict):  # dicrete values with mapping to string
-            return type(mapping.values()[0])
+            return type(list(mapping.values())[0])
         elif isinstance(mapping, str):
             if mapping in ["int", "float", "str"]:
                 return eval(mapping)
@@ -122,6 +125,23 @@ class CommandTemplate(yaml.YAMLObject):
 
     def cast_argument_as_type(self, key, value):
         return self.argument_type(key)(value)
+
+    def create_arg_dict(self, args):
+        """returns a dict with argument description and casted values
+
+        Args:
+            args (tuple): arguments to be mapped a casted, must have the same length as
+                mapping dict
+
+        """
+        d = dict()
+        for key, arg in zip(self.argument_mappings.keys(), args):
+            d[key] = self.cast_argument_as_type(key, arg)
+        return d
+
+    def sorted_tuple_from_dict(self, argument_dict):
+        # TODO sort args by dict
+        return list(argument_dict.values())
 
 
 class CommandTemplateList(dict):

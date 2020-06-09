@@ -5,6 +5,7 @@ import abc
 import time
 import logging
 import queue
+import warnings
 from enum import Enum
 from blinker import signal
 
@@ -33,6 +34,7 @@ class ThreadCommunicationBase(threading.Thread, abc.ABC):
     provided by the main task.
 
     TODO: write metaclass to have __answer_queue as class property
+    TODO: maybe add stop event to all threads so they can finish what they are doing
 
     Args:
         name (str): name of the thread.
@@ -193,6 +195,8 @@ class ComPackage(object):
         command_obj: that was send
 
     """
+
+    warnings.warn("obj will be removed", DeprecationWarning, stacklevel=2)
 
     def __init__(self, device, command_obj=None):
         """

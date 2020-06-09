@@ -1,23 +1,23 @@
 import logging
 import logging.config
 import logging.handlers
-import os
-import queue
 import multiprocessing
+import queue
 import sys
 import threading
 import tkinter as tk
 import tkinter.ttk as tkk
 from tkinter import scrolledtext
 
-import yaml
-
 from viewcontrol.remotecontrol import supported_devices
-from viewcontrol.remotecontrol.commanditembase import CommandItem
-from viewcontrol.remotecontrol.processcmd import ThreadCmd, ProcessCmd
+from viewcontrol.remotecontrol.commanditembase import CommandSendItem
+from viewcontrol.remotecontrol.processcmd import ThreadCmd
+from viewcontrol.remotecontrol.processcmd import ProcessCmd
 
 
 class Application(tk.Frame):
+    """Simple tkinter frame to send commands and requests with arguments"""
+
     def __init__(self, master=None, queue_send=None, logger_config=None):
         super().__init__(master)
         self.queue_send = queue_send
@@ -65,9 +65,9 @@ class Application(tk.Frame):
         args = self.collect_args()
         self.logger.info(f"Command: {self.selcted_command} {args}")
         self.send_command_item(
-            CommandItem(
+            CommandSendItem(
                 self.selcted_device.device_name,
-                self.selcted_command,
+                self.selcted_command.name,
                 arguments=args,
                 request=False,
             )
@@ -77,9 +77,9 @@ class Application(tk.Frame):
         args = self.collect_args()
         self.logger.info(f"Request: {self.selcted_command} {args}")
         self.send_command_item(
-            CommandItem(
+            CommandSendItem(
                 self.selcted_device.device_name,
-                self.selcted_command,
+                self.selcted_command.name,
                 arguments=args,
                 request=True,
             )
@@ -170,7 +170,9 @@ class Application(tk.Frame):
 
 if __name__ == "__main__":
 
-    class MyHandler:
+    MULTIPROCESSING = False
+
+    class MyHandler(logging.Handler):
         """
         A simple handler for logging events. It runs in the listener process and
         dispatches events to loggers based on the name in the received record,
@@ -196,28 +198,48 @@ if __name__ == "__main__":
 
     logger.info("Logger Started")
 
-    q = multiprocessing.Queue()
+    config_queue_logger = None
+    if MULTIPROCESSING:
+        q = multiprocessing.Queue()
 
-    config_queue_logger = {
-        "version": 1,
-        "disable_existing_loggers": True,
-        "handlers": {"queue": {"class": "logging.handlers.QueueHandler", "queue": q},},
-        "root": {"level": "DEBUG", "handlers": ["queue"]},
-    }
+        config_queue_logger = {
+            "version": 1,
+            "disable_existing_loggers": True,
+            "handlers": {
+                "queue": {"class": "logging.handlers.QueueHandler", "queue": q},
+            },
+            "root": {"level": "DEBUG", "handlers": ["queue"]},
+        }
 
-    listener = logging.handlers.QueueListener(q, MyHandler())
-    listener.start()
+        listener = logging.handlers.QueueListener(q, MyHandler())
+        listener.start()
 
-    logger.info("Queue Listener Started")
+        logger.info("Queue Listener Started")
 
-    queue_send = multiprocessing.Queue()
-    queue_receive = multiprocessing.Queue()
+        queue_send = multiprocessing.Queue()
+        queue_receive = multiprocessing.Queue()
+
+    else:
+
+        queue_send = queue.Queue()
+        queue_receive = queue.Queue()
 
     device = {"Behringer X32": ("192.168.178.22", 10023)}
-    stop_event = multiprocessing.Event()
-    thread = ProcessCmd(
-        config_queue_logger, queue_receive, queue_send, device, stop_event
-    )
+
+    if MULTIPROCESSING:
+        stop_event = multiprocessing.Event()
+        thread = ProcessCmd(
+            queue_receive,
+            queue_send,
+            device,
+            stop_event,
+            logger_config=config_queue_logger,
+        )
+
+    else:
+        stop_event = threading.Event()
+        thread = ThreadCmd(queue_receive, queue_send, device, stop_event)
+
     thread.start()
 
     logger.info("Device Thread/Process Started")
@@ -230,9 +252,6 @@ if __name__ == "__main__":
     logger.info("App Closed")
 
     stop_event.set()
-
     logger.info("end of main")
-
-    # listener.stop()
 
     sys.exit(0)

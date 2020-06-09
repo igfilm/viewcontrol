@@ -7,44 +7,48 @@ import threading
 
 from blinker import signal
 
-from viewcontrol.remotecontrol.threadcommunicationbase import ThreadCommunicationBase
+from .threadcommunicationbase import ThreadCommunicationBase
 from . import supported_devices
 
 
 class ProcessCmd(multiprocessing.Process):
+    """Dummy starting ThreadCmd as process. See ThreadCmd for args."""
+
     def __init__(
         self,
-        logger_config,
         queue_status,
-        queue_comand,
+        queue_command,
         device_options,
         stop_event,
+        logger_config,
         **kwargs
     ):
         super().__init__(name="ProcessCmd", **kwargs)
         self._dummy = CommandProcess(
-            logger_config,
             queue_status,
-            queue_comand,
+            queue_command,
             device_options,
             self.name,
             stop_event,
+            logger_config=logger_config,
         )
 
     def run(self):
+        """Method to be run in sub-process; runs CommandProcess.run();"""
         self._dummy.run()
 
 
 class ThreadCmd(threading.Thread):
-    def __init__(
-        self, logger, queue_status, queue_comand, modules, stop_event, **kwargs
-    ):
+    """Dummy to starting ThreadCmd as thread. See ThreadCmd for args."""
+
+    def __init__(self, queue_status, queue_command, modules, stop_event, **kwargs):
         super().__init__(name="ThreadCmd", **kwargs)
         self._dummy = CommandProcess(
-            logger, queue_status, queue_comand, modules, self.name, stop_event
+            queue_status, queue_command, modules, self.name, stop_event
         )
 
     def run(self):
+        """Method representing the thread’s activity. Runs CommandProcess.run()"""
         self._dummy.run()
 
 
@@ -52,28 +56,35 @@ class CommandProcess:
     """Manages and starts threads of devices and handles communication.
 
     Args:
-         logger_config (dict):
-         queue_status (queue.Queue or multiprocessing.Queue):
-         queue_comand (queue.Queue or multiprocessing.Queue):
-         devices (dict):
-         parent_name:
+         queue_status (queue.Queue or multiprocessing.Queue): queue over which
+            received messages will be returned from process.
+         queue_command (queue.Queue or multiprocessing.Queue): queue over which
+            commands will be passed to process.
+         devices (dict): dict of device_name:connection telling the thread/process
+            which device threads to start and which which ip and port.
+            E.g.: {Behringer X32: (192.168.178.22, 10023)}
+         name_thread (str): name of thread ot process.
+         stop_event (threading.Event or multiprocessing.Event): Event object which
+            will stop thread when set.
+         logger_config (dict or None): pass a queue logger logger config (only when
+            using multiprocessing). Default to None.
     """
 
     def __init__(
         self,
-        logger_config,
         queue_status,
-        queue_comand,
+        queue_command,
         devices,
-        parent_name,
+        name_thread,
         stop_event,
+        logger_config=None,
     ):
         self.stop_event = stop_event
         self.logger_config = logger_config
         self.queue_status = queue_status
-        self.queue_comand = queue_comand
+        self.queue_command = queue_command
         self.devices = devices
-        self.name = parent_name
+        self.name = name_thread
         self.can_run = threading.Event()
         self.can_run.set()
 
@@ -84,10 +95,14 @@ class CommandProcess:
         self.signal_sink = signal("sink_send")
         self.signal_sink.connect(self.subscr_signal_sink)
 
+        self.logger = None
+
     def run(self):
+        """Run function for thread/process, to be called by dummies."""
 
         # must be called in run
-        logging.config.dictConfig(self.logger_config)
+        if self.logger_config:
+            logging.config.dictConfig(self.logger_config)
         self.logger = logging.getLogger()
 
         self.logger.info("Started command_process with pid {}".format(os.getpid()))
@@ -102,15 +117,17 @@ class CommandProcess:
                 self.threads.append(thread_device)
                 s = signal("{}_send".format(thread_device.device_name))
                 self.signals.update({thread_device.device_name: s})
-                # else:
-                #     self.signals.update({device.name: self.signal_sink})
+
+            others = [d for d in list(supported_devices) if d not in list(self.devices)]
+            for device in others:
+                self.signals.update({device: self.signal_sink})
 
             for thread in self.threads:
                 thread.start()
 
             while not self.stop_event.is_set():
                 try:
-                    command_item = self.queue_comand.get(block=True, timeout=0.1)
+                    command_item = self.queue_command.get(block=True, timeout=0.1)
                     logging.debug("got item")
                     self.send_to_thread(command_item)
                 except queue.Empty:
@@ -133,8 +150,6 @@ class CommandProcess:
                 #     t.start()
                 #     self.timers.append(t)
 
-            # for thread in self.threads:
-            #     thread.terminate()
 
             self.logger.info("stop flag set. terminating processcmd")
 
@@ -143,10 +158,16 @@ class CommandProcess:
                 raise
             finally:
                 self.logger.error(
-                    "Uncaught exception in process '{}'".format(self.name), exc_info=(e)
+                    "Uncaught exception in process '{}'".format(self.name), exc_info=e
                 )
 
     def send_to_thread(self, command_item):
+        """send command item to thread via a blinker signal
+
+        Args:
+            command_item(CommandItem)
+
+        """
         try:
             sig = self.signals.get(command_item.device)
             sig.send(command_item)
@@ -155,7 +176,15 @@ class CommandProcess:
                 "Device {} not known".format(command_item.device.device_name)
             )
 
-    def subscr_signal_sink(self, value):
+    def subscr_signal_sink(self, command_item):
+        """subscriber for all signals for which device no thread was started.
+
+        Its only job to print a warning in the log that device is not started.
+
+        Args:
+            command_item(CommandItem)
+
+        """
         self.logger.warning(
-            "~~X command '{}' was not send to {}!".format(value, value.combo_device)
+            f"~~X Device '{command_item.device}' not started, command was not send!"
         )
