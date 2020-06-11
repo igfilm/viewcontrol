@@ -7,9 +7,8 @@ import threading
 
 from blinker import signal
 
-from .threadcommunicationbase import ThreadCommunicationBase
-from .commanditembase import CommandSendItem
 from . import supported_devices
+from .threadcommunicationbase import ThreadCommunicationBase
 from ..util import timing
 
 

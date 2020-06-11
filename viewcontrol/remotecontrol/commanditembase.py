@@ -1,5 +1,6 @@
 import logging
 import pathlib
+import re
 import string
 
 import yaml
@@ -87,6 +88,8 @@ class CommandTemplate(yaml.YAMLObject):
             predefined set of commands. The sets are loaded by the DictCommandItemLib
     """
 
+    allowed_type_strings = ["int", "float", "str"]
+
     def __init__(
         self,
         name,
@@ -103,6 +106,7 @@ class CommandTemplate(yaml.YAMLObject):
         self.command_composition = command_composition
         self.answer_analysis = answer_analysis
         self.argument_mappings = argument_mappings
+        self.__is_valid_err_counter = 0
 
     def __repr__(self):
         return f"Command: {self.name}"
@@ -114,15 +118,44 @@ class CommandTemplate(yaml.YAMLObject):
     def arguments(self):
         return list(self.argument_mappings)
 
+    @property
+    def number_mapping_arguments(self):
+        if self.argument_mappings:
+            return len(self.argument_mappings)
+        return 0
+
+    @property
+    def number_command_arguments(self):
+        if self.command_composition:
+            return format_arg_count(self.command_composition, raise_ex=False)
+        return 0
+
+    @property
+    def number_request_arguments(self):
+        if self.request_object:
+            return format_arg_count(self.request_object, raise_ex=False)
+        return 0
+
+    @property
+    def number_analysis_arguments(self):
+        if self.answer_analysis:
+            return re.compile(self.answer_analysis).groups
+        return 0
+
     def argument_type(self, key):
-        """get argument type from mapping"""
+        """get argument type from mapping for given key
+
+        Returns:
+            type:
+
+        """
         mapping = self.argument_mappings[key]
         if isinstance(mapping, list):  # discrete values
             return type(mapping[0])
-        elif isinstance(mapping, dict):  # dicrete values with mapping to string
+        elif isinstance(mapping, dict):  # discrete values with mapping to string
             return type(list(mapping.values())[0])
         elif isinstance(mapping, str):
-            if mapping in ["int", "float", "str"]:
+            if mapping in self.allowed_type_strings:
                 return eval(mapping)
         # else
         raise AttributeError("format no found")
@@ -131,11 +164,14 @@ class CommandTemplate(yaml.YAMLObject):
         return self.argument_type(key)(value)
 
     def create_arg_dict(self, args):
-        """returns a dict with argument description and casted values
+        """returns a dict with argument description and casted values.
 
         Args:
             args (tuple): arguments to be mapped a casted, must have the same length as
                 mapping dict
+
+        Returns:
+            dict:
 
         """
 
@@ -149,8 +185,139 @@ class CommandTemplate(yaml.YAMLObject):
         return d
 
     def sorted_tuple_from_dict(self, argument_dict):
-        # TODO sort args by dict
-        return list(argument_dict.values())
+        """Sorts a dict in the order of the argument_mapping, dict must have same keys.
+
+        Returns:
+            tuple: arguments in order of dict
+
+        """
+        sort = [argument_dict.get(key) for key in self.argument_mappings.keys()]
+        return tuple(sort)
+
+    def __print_message(self, rule, attribute, msg):
+        self.__is_valid_err_counter += 1
+        composed = f"{self.name:<20}{rule:<2} {attribute:<19}: {msg}"
+        logging.getLogger().warning(f"YAML Error in loaded Device: {composed}")
+
+    def is_valid(self):
+        """Returns 0 if object is valid by checking a list of criteria.
+
+        prints errors into log.
+
+        Returns:
+            int: number of errors
+
+        """
+
+        self.__is_valid_err_counter = 0
+        prm = self.__print_message
+
+        def try_arg_count_formatter(name, fmt):
+            """also a test if formatter string is valid"""
+            try:
+                return format_arg_count(fmt, raise_ex=True)
+            except ValueError as err:
+                prm("4", name, f"formatter error: {err}")
+                return None
+
+        def try_arg_count_regex(expr):
+            try:
+                return re.compile(expr).groups
+            except re.error as err:
+                prm("6", "answer_analysis", f"regex error: {err}")
+                return None
+
+        def smaller_equal(a, b):
+            if a and b:
+                return a <= b
+            else:
+                return True
+
+        def homogeneous_type(seq):
+            iseq = iter(seq)
+            first_type = type(next(iseq))
+            return first_type if all((type(x) is first_type) for x in iseq) else False
+
+        for att in [
+            "name",
+            "description",
+            "request_object",
+            "command_composition",
+            "answer_analysis",
+            "argument_mappings",
+        ]:
+            if not hasattr(self, att):
+                prm("1", att, "attribute missing")
+
+        mapping_arg_number = None
+        if self.argument_mappings:
+            if not all(isinstance(x, str) for x in self.argument_mappings.keys()):
+                prm("8a", "argument_mappings", "all dict keys must be of type str")
+            for key, value in self.argument_mappings.items():
+                if isinstance(value, str):
+                    if value not in self.allowed_type_strings:
+                        prm(
+                            "8b",
+                            "argument_mappings",
+                            f"str of '{key}' must be in {self.allowed_type_strings}",
+                        )
+                elif isinstance(value, list):
+                    if not homogeneous_type(value):
+                        prm(
+                            "8b",
+                            "argument_mappings",
+                            f"all list elements of '{key}' must have the same type",
+                        )
+                elif isinstance(value, dict):
+                    if not homogeneous_type(value.values()):
+                        prm(
+                            "8b",
+                            "argument_mappings",
+                            f"all dict values of '{key}' must have the same type",
+                        )
+                    if not all(isinstance(x, str) for x in value.keys()):
+                        prm(
+                            "8b",
+                            "argument_mappings",
+                            f"all dict keys of '{key}' must be of type str",
+                        )
+                else:
+                    prm("8b", "argument_mappings", f"type  of '{key}' is not known")
+            mapping_arg_number = len(self.argument_mappings)
+
+        # request_arg_number = None  # 0 if request object exists else None
+        if self.request_object:
+            request_arg_number = try_arg_count_formatter(
+                "request_object", self.request_object
+            )
+
+            if not smaller_equal(request_arg_number, mapping_arg_number):
+                prm("5", "request_object", "more formatter's than arguments")
+
+        # command_arg_number = None
+        if self.command_composition:
+            command_arg_number = try_arg_count_formatter(
+                "command_composition", self.command_composition
+            )
+
+            if not smaller_equal(command_arg_number, mapping_arg_number):
+                prm("5", "command_composition", "more formatter's than arguments")
+
+        analysis_arg_number = None
+        if self.answer_analysis:
+            analysis_arg_number = try_arg_count_regex(self.answer_analysis)
+
+            if not smaller_equal(analysis_arg_number, mapping_arg_number):
+                prm("7", "answer_analysis", "more regex capture groups than arguments")
+
+        if analysis_arg_number is not None and mapping_arg_number is None:
+            if analysis_arg_number > 0:
+                prm("3", "mapping_arg_number", "answer analysis needs a mapping dict")
+
+        if self.__is_valid_err_counter == 0:
+            logging.getLogger().debug(f"command {self.name} isn valid")
+
+        return self.__is_valid_err_counter
 
 
 class CommandTemplateList(dict):
@@ -181,8 +348,21 @@ class CommandTemplateList(dict):
             for obj in list_obj:
                 self.update({obj.name: obj})
 
+    def is_valid(self):
+        errors = 0
+        for command_template in self.values():
+            errors += command_template.is_valid()
+        return errors
 
-def format_arg_count(fmt):
+
+def format_arg_count(fmt, raise_ex=False):
+    """return arguments in formatter string, catches errors by default.
+
+    Args:
+        fmt(str): formatter string
+        raise_ex(bool): if True, don't catch as exceptions. Defaults to False.
+
+    """
     try:
         names = [
             name
@@ -198,17 +378,7 @@ def format_arg_count(fmt):
         fmt.format(*range(cnt))
     except Exception as ex:
         logging.getLogger().warning(f"error: {ex}")
+        if raise_ex:
+            raise
         return None  # or raise ValueError(err)
     return cnt
-
-
-if __name__ == "__main__":
-
-    from viewcontrol.remotecontrol import supported_devices
-
-    devs = supported_devices
-
-    Dev = devs.get("Behringer X32")
-    dev = Dev("192.168.178.122", 123)
-
-    print(devs)

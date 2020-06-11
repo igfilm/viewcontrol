@@ -1,8 +1,6 @@
-import os
 import socket
 
-from viewcontrol.remotecontrol.commanditembase import CommandTemplateList
-from viewcontrol.remotecontrol.threadcommunicationbase import ThreadCommunicationBase
+from ..threadcommunicationbase import ThreadCommunicationBase
 
 
 class ThreadCommunication(ThreadCommunicationBase):
@@ -38,8 +36,8 @@ class ThreadCommunication(ThreadCommunicationBase):
 
             while True:
 
-                if not self.q_comand.empty():
-                    command_item = self.q_comand.get()
+                if not self.q_command.empty():
+                    command_item = self.q_command.get()
                     str_send = self._combine_command(self._compose(command_item))
                     self.last_cmd = (command_item, str_send)
                     self.logger.debug("Send: {}".format(str_send))
@@ -55,11 +53,8 @@ class ThreadCommunication(ThreadCommunicationBase):
                 if str_recv:
                     self._analyse(str_recv)
 
-    def _analyse(self, str_recv):
-        NotImplementedError("please overwrite in subclass")
-
     def _combine_command(self, str_command):
-        """Adds the start and end sequence to each commannd string if not already there.
+        """Adds the start and end sequence to each command string if not already there.
         Args:
             str_command (str): command to be combined
         Returns:

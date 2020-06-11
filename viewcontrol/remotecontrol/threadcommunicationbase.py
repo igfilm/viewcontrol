@@ -1,12 +1,12 @@
-import os
-import pathlib
-import threading
 import abc
-import time
 import logging
+import os
 import queue
+import threading
+import time
 import warnings
 from enum import Enum
+
 from blinker import signal
 
 from . import dict_command_folder
@@ -24,9 +24,9 @@ class DeviceType(Enum):
 class ThreadCommunicationBase(threading.Thread, abc.ABC):
     """Base Class for all communication threads
 
-    The 'run' method of the thread takes care of repeating the listening 
-    process and catches connection errors (default: OSError) while other errors 
-    are logged logging errors. For this only the 'listen' function has to be 
+    The 'run' method of the thread takes care of repeating the listening
+    process and catches connection errors (default: OSError) while other errors
+    are logged logging errors. For this only the 'listen' function has to be
     overwritten with the device-specific communication.
 
     While data to send is received via a signal event send via blinker with the name
@@ -73,11 +73,11 @@ class ThreadCommunicationBase(threading.Thread, abc.ABC):
     def __init__(self, name, **kwargs):
         super().__init__(daemon=True, name=name, **kwargs)
         self._stop_request = False
-        self.q_comand = queue.Queue()
+        self.q_command = queue.Queue()
         self.logger = logging.getLogger(self.name)
-        self.type_exeption = OSError
+        self.type_exception = OSError
         self.signal = signal("{}_send".format(self.name))
-        self.signal.connect(self.__subsr_signal_send)
+        self.signal.connect(self.__subscribe_signal_send)
         self.dict_command_template = None
         self.dict_command_template_path = None
         tmp_mod_name = self.__module__.split(".")[-1]
@@ -86,6 +86,7 @@ class ThreadCommunicationBase(threading.Thread, abc.ABC):
             self.dict_command_template_path = tmp_path
             self.dict_command_template = CommandTemplateList(tmp_path)
             self.dict_command_template.load_objects_from_yaml()
+            self.dict_command_template.is_valid()
 
     @classmethod
     def set_answer_queue(cls, answer_queue):
@@ -112,7 +113,7 @@ class ThreadCommunicationBase(threading.Thread, abc.ABC):
         self.logger.info("<~~ received data: '{}'".format(str(obj)))
         self.__answer_queue.put(obj)
 
-    def __subsr_signal_send(self, obj):
+    def __subscribe_signal_send(self, obj):
         """proxy collecting all events (send requests) for this device
 
         Args:
@@ -120,7 +121,7 @@ class ThreadCommunicationBase(threading.Thread, abc.ABC):
 
         """
         self.logger.info("~~> sending data: '{}'".format(obj))
-        self.q_comand.put(obj)
+        self.q_command.put(obj)
 
     def run(self):
         """Method representing the thread’s activity.
@@ -141,7 +142,7 @@ class ThreadCommunicationBase(threading.Thread, abc.ABC):
         while not self._stop_request:
             try:
                 self.listen()
-            except self.type_exeption as ex:
+            except self.type_exception as ex:
                 if type(ex) is OSError:
                     self.logger.warning(
                         "{}: Communication Failed ({}). "
@@ -183,6 +184,12 @@ class ThreadCommunicationBase(threading.Thread, abc.ABC):
         pass
 
     def _compose(self, command_item):
+        """blueprint to compose a massage, implementation should fit most needs
+
+        Args:
+            command_item (CommandSendItem):
+
+        """
 
         try:
             command_template = self.dict_command_template.get(command_item.command)
@@ -193,7 +200,8 @@ class ThreadCommunicationBase(threading.Thread, abc.ABC):
 
             if isinstance(command_item.arguments, dict):
                 arguments = command_template.sorted_tuple_from_dict(
-                    command_item.arguments)
+                    command_item.arguments
+                )
             else:
                 arguments = command_item.arguments
 
@@ -206,6 +214,15 @@ class ThreadCommunicationBase(threading.Thread, abc.ABC):
                 f"error composing message {command_item}. Error Message: {ex}"
             )
             return None
+
+    def _analyse(self, *args):
+        """function should be used to analyze code to have a common structure.
+
+        Args:
+            *args: arguments, depending on protocol.
+
+        """
+        NotImplementedError("please overwrite in subclass")
 
 
 class ComPackage(object):

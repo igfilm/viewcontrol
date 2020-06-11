@@ -2,7 +2,8 @@ import re
 
 from ._threadcommunication import ThreadCommunication
 from ..commanditembase import CommandRecvItem
-from ..threadcommunicationbase import DeviceType, ComType, ComPackage
+from ..threadcommunicationbase import ComType
+from ..threadcommunicationbase import DeviceType
 
 
 class AtlonaATOMESW32(ThreadCommunication):
@@ -14,11 +15,17 @@ class AtlonaATOMESW32(ThreadCommunication):
     error_seq = r"Command FAILED: \((.*)\)"
 
     def _analyse(self, str_recv):
+
+        self.logger.debug(f"analyzing {str_recv}")
         # check if received massage is valid
         if str_recv and str_recv.endswith(b"\r\n"):
             # if its equal the send message its the echo seen by client
             # therefore continue and receive the wanted answer
-            if not self.feedback_received and self.last_send_data in str_recv:
+            if (
+                not self.feedback_received
+                and self.last_send_data
+                and self.last_send_data in str_recv
+            ):
                 self.feedback_received = True
                 return
 
@@ -50,17 +57,14 @@ class AtlonaATOMESW32(ThreadCommunication):
                     else:
                         values = ()
 
-                    cai = CommandRecvItem(self.name, command_template.name, values,
-                                          mt)
+                    cai = CommandRecvItem(self.name, command_template.name, values, mt)
                     self._put_into_answer_queue(cai)
 
             except TypeError as ex:
                 self.logger.warning(
                     f"error analyzing message {str_recv}. Error Message: {ex}"
                 )
-                cai = CommandRecvItem(
-                    self.name, None, str_recv, ComType.unidentifiable
-                )
+                cai = CommandRecvItem(self.name, None, str_recv, ComType.unidentifiable)
                 self._put_into_answer_queue(cai)
                 return
 

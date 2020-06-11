@@ -404,31 +404,31 @@ class ViewControl(object):
             self.sig_cmd_prop.send(data)
             self.event_queue.put(data)
 
+    def thread_event_system(self):
+        """Thread: event system for user defined events
+
+        compares every received communication package with user defined
+        event list. If event matches, run/trigger in show.EventModule
+        specified action.
+
+        """
+        while True:
+            data = self.event_queue.get(block=True)
+            if isinstance(data, ComPackage):  # ComEvent
+                etype = show.ComEventModule
+            elif isinstance(data, tuple) and data[0] == "KeyEvent":  # KeyEvent
+                etype = show.KeyEventModule
+            else:
+                return
+            for mod in self.playlist.eventlist:
+                if isinstance(mod, etype):
+                    if mod.check_event(data):
+                        for cmd_tpl in mod.list_commands:
+                            self.sig_cmd_command.send(cmd_tpl)
+                        if mod.jump_to_target_element:
+                            self.playlist.notify(mod.jump_to_target_element)
+
     if "pyinput" not in sys.modules:
-
-        def thread_event_system(self):
-            """Thread: event system for user defined events
-
-            compares every received communication package with user defined
-            event list. If event matches, run/trigger in show.EventModule
-            specified action.
-
-            """
-            while True:
-                data = self.event_queue.get(block=True)
-                if isinstance(data, ComPackage):  # ComEvent
-                    etype = show.ComEventModule
-                elif isinstance(data, tuple) and data[0] == "KeyEvent":  # KeyEvent
-                    etype = show.KeyEventModule
-                else:
-                    return
-                for mod in self.playlist.eventlist:
-                    if isinstance(mod, etype):
-                        if mod.check_event(data):
-                            for cmd_tpl in mod.list_commands:
-                                self.sig_cmd_command.send(cmd_tpl)
-                            if mod.jump_to_target_element:
-                                self.playlist.notify(mod.jump_to_target_element)
 
         def on_press(self, key):
             """pynput event listener: key event on press"""

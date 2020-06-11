@@ -10,7 +10,8 @@ import tkinter.ttk as tkk
 from tkinter import scrolledtext
 
 from viewcontrol.remotecontrol import supported_devices
-from viewcontrol.remotecontrol.commanditembase import CommandSendItem, format_arg_count
+from viewcontrol.remotecontrol.commanditembase import CommandSendItem
+from viewcontrol.remotecontrol.commanditembase import format_arg_count
 from viewcontrol.remotecontrol.processcmd import ThreadCmd
 from viewcontrol.remotecontrol.processcmd import ProcessCmd
 
@@ -131,6 +132,7 @@ class Application(tk.Frame):
     def create_args(self):
         self.clear_args()
         row = 4
+
         if not self.selcted_command.argument_mappings:
             return
 
@@ -188,10 +190,9 @@ if __name__ == "__main__":
             logger.handle(record)
 
     FORMAT = (
-        "%(asctime)s %(processName)-12s %("
-        "threadName)-21s %(levelname)-8s %(message)s"
+        "%(asctime)s %(processName)-12s %(threadName)-21s %(levelname)-8s %(message)s"
     )
-    # FORMAT = "%(asctime)s %(name)-26s %(levelname)-8s %(processName)-12s %(message)s"
+
     logging.basicConfig(format=FORMAT)
 
     logger = logging.getLogger()
@@ -201,7 +202,12 @@ if __name__ == "__main__":
 
     logger.info("Logger Started")
 
-    config_queue_logger = None
+    device = {
+        "Behringer X32": ("192.168.178.22", 10023),
+        "Atlona AT-OME-SW32": ("192.168.178.202", 23),
+        "Denon DN-500BD": ("192.168.178.201", 9030),
+    }
+
     if MULTIPROCESSING:
         q = multiprocessing.Queue()
 
@@ -222,18 +228,6 @@ if __name__ == "__main__":
         queue_send = multiprocessing.Queue()
         queue_receive = multiprocessing.Queue()
 
-    else:
-
-        queue_send = queue.Queue()
-        queue_receive = queue.Queue()
-
-    device = {
-        "Behringer X32": ("192.168.178.22", 10023),
-        "Atlona AT-OME-SW32": ("192.168.178.202", 23),
-        "Denon DN-500BD": ("192.168.178.201", 9030),
-    }
-
-    if MULTIPROCESSING:
         stop_event = multiprocessing.Event()
         thread = ProcessCmd(
             queue_receive,
@@ -244,6 +238,10 @@ if __name__ == "__main__":
         )
 
     else:
+
+        queue_send = queue.Queue()
+        queue_receive = queue.Queue()
+
         stop_event = threading.Event()
         thread = ThreadCmd(queue_receive, queue_send, device, stop_event)
 

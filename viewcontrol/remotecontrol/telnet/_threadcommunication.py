@@ -1,16 +1,12 @@
-import os
 import re
 import telnetlib
 import time
 
-from viewcontrol.remotecontrol.commanditembase import CommandTemplateList, \
-    CommandRecvItem
-from viewcontrol.remotecontrol.threadcommunicationbase import ThreadCommunicationBase, \
-    ComType
+from ..threadcommunicationbase import ThreadCommunicationBase
 
 
 class ThreadCommunication(ThreadCommunicationBase):
-    """Base class for all telnet comunication
+    """Base class for all telnet communication
     
     The 'listen' method is called in the superclass in a while loop with,
     error handling.
@@ -40,7 +36,7 @@ class ThreadCommunication(ThreadCommunicationBase):
 
         with telnetlib.Telnet(self.target_ip, port=self.target_port, timeout=5) as tn:
             tn.set_debuglevel(0)
-            # and wait until welcome message is recived
+            # and wait until welcome message is received
             self._telnet_login(tn)
             # while loop of thread
             while True:
@@ -53,9 +49,9 @@ class ThreadCommunication(ThreadCommunicationBase):
                 if (
                     time_tmp - last_send_time > 0.5
                     and not self.feedback_received
-                    and not self.q_comand.empty()
+                    and not self.q_command.empty()
                 ):
-                    command_item = self.q_comand.get()
+                    command_item = self.q_command.get()
                     self.last_send_command_item = command_item
                     str_send = self._combine_command(self._compose(command_item))
                     self.logger.debug("Send: {0:<78}R{0}".format(str_send))
@@ -64,14 +60,14 @@ class ThreadCommunication(ThreadCommunicationBase):
                     tn.write(self.last_send_data)
                     last_send_time = time_tmp
 
-                # allways try to recive messages with given end sequence
+                # always try to receive messages with given end sequence
                 str_recv = tn.read_until(b"\r\n", timeout=0.1)
 
                 if str_recv:
                     self._analyse(str_recv)
 
     def _analyse(self, str_recv):
-        raise NotImplementedError
+        NotImplementedError("please overwrite in subclass")
 
     def _contains_error(self, string):
         if re.search(self.error_seq, string):
@@ -84,7 +80,7 @@ class ThreadCommunication(ThreadCommunicationBase):
         NotImplemented("please implement")
 
     def _combine_command(self, str_command):
-        """Adds the start and end sequence to each commannd string if not already there.
+        """Adds the start and end sequence to each command string if not already there.
         Args:
             str_command (str): command to be combined
         Returns:

@@ -1,4 +1,4 @@
-#List of Commands for the Atlona AT-OMW-SW32
+#List of Commands for the Atlona AT-OMW-SW32 Matrix Switch
 
 - !CommandTemplate
   name: InputStatus
@@ -23,7 +23,9 @@
   request_object: 'Status'
   command_composition: null
   answer_analysis: 'x(\d)AVx1,x(\d)AVx2'
-  argument_mappings: null
+  argument_mappings:
+    OUT1: [1,2,3]
+    OUT2: [1,2]
 
 - !CommandTemplate
   name: Set Output
@@ -31,7 +33,9 @@
   request_object: null
   command_composition: 'x{0}AVx{1}'
   answer_analysis: 'x(\d)AVx(\d)'
-  argument_mappings: null
+  argument_mappings:
+    IN: [1,2,3]
+    OUT: [1,2]
 
 - !CommandTemplate
   name: Lock
@@ -77,15 +81,16 @@
   argument_mappings: null
 
 - !CommandTemplate
-  name: CommaWait
+  name: Comma Wait
   description: "Enable/Disable a comma adding a 5 second delay between commands. Default is on."
   request_object: null
   command_composition: 'CommaWait {}'
   answer_analysis: 'CommaWait (\w{2,3})'
   argument_mappings:
-    'on': 'on'
-    'off': 'off'
-    'sta': 'standart'
+    "setting":
+      "on": "on"
+      "off": "off"
+      "default": "sta"
 
 - !CommandTemplate
   name: Blink
@@ -94,9 +99,10 @@
   command_composition: 'Blink {}'
   answer_analysis: 'Blink (\w{2,3})'
   argument_mappings:
-    'on': 'on'
-    'off': 'off'
-    'sta': 'standart'
+    "setting":
+      "on": "on"
+      "off": "off"
+      "default": "sta"
 
 - !CommandTemplate
   name: DispBtn
@@ -105,10 +111,11 @@
   command_composition: 'DispBtn {}'
   answer_analysis: 'DispBtn (\w{2,3})'
   argument_mappings:
-    'on': 'on'
-    'off': 'off'
-    'sta': 'standart'
-    'tog': 'toogle'
+    "set as":
+      "on": "on"
+      "off": "off"
+      "default": "sta"
+      'toogle': "tog"
 
 - !CommandTemplate
     name: System sta

@@ -48,16 +48,17 @@ The properties of every command are defined in CommandTemplates, which can be lo
 
 
 Rules for YAML:
-a) there must be an answer_analysis for all commands/requests expecting a response, even if its identical to the composition (can't be tested)
-b) when a argument can be parsed there must be a argument_mapping with the correct number of arguments
-c) if there is a case where answer and response have a different amount of arguments, they must be spited into two commands
-da) the formatter string must be valid and can be indexed (not tested)
-db) the formatter string must have less or equal arguments than in the argument_mapping (this is for OSC the case)
-fa) the regex string must be valid and
-fb) must have less or equal capture groups that the argument mapping (this is for OSC the case, too)
-g) mapping dict
-    - dict keys must be str and are displayed as label of options
-    - dict values can be of types list, dict and one of the strings 'int', 'float'
+
+1) there must be an answer_analysis for all commands/requests expecting a response, even if its identical to the composition (can't be tested)
+2) all attributes must be there
+3) if there is an answer_analysis there must be a argument_mappings too, except when there a nor parser groups in answer_analysis
+4) the formatter string must be valid and can be indexed (not tested)
+5) the formatter string must have less or equal arguments than in the argument_mapping (this is for OSC the case)
+6) the regex string must be valid and
+7) must have less or equal capture groups that the argument mapping (this is for OSC the case, too)
+8) mapping dict
+    a) dict keys must be str and are displayed as label of options
+    b) dict values can be of types list, dict and one of the strings 'int', 'float'
         - list: elements must have the same type, can be duplicates, but makes no sense
         - dict: keys must be string, values must have the same type and can be duplicates
         - str: are must be in list and are used for type casting of answers

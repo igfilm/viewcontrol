@@ -33,17 +33,16 @@ class ThreadCommunication(ThreadCommunicationBase):
         self.last_composed = None
         super().__init__(self.device_name)
 
+    # noinspection PyProtectedMember,PyProtectedMember
     def listen(self):
 
         while True:  # while loop of thread
 
             client = SimpleUDPClient(self.target_ip, self.target_port)
-            command_item = self.q_comand.get(block=True)
+            command_item = self.q_command.get(block=True)
             address, value = self._compose(command_item)
             if not address:
-                cai = CommandRecvItem(
-                    self.name, command_item.name, (), ComType.failed
-                )
+                cai = CommandRecvItem(self.name, command_item.name, (), ComType.failed)
                 self._put_into_answer_queue(cai)
                 continue
             client.send_message(address, value)
@@ -52,7 +51,7 @@ class ThreadCommunication(ThreadCommunicationBase):
 
             with ThreadingOSCUDPServer((c_address, c_port), self.dispatcher) as server:
                 server.timeout = 0.1
-                while self.q_comand.empty():
+                while self.q_command.empty():
                     server.handle_request()
 
     def _compose(self, command_item):
@@ -100,11 +99,6 @@ class ThreadCommunication(ThreadCommunicationBase):
             return None, None
 
     def _analyse(self, address, *args):
-        """Find corresponding command_template, get answer values and put the in queue.
-
-        First try last send one. Handler for ThreadingOSCUDPServer.
-
-        """
 
         self.logger.debug(f"analyzing {address} with args {args}")
 
@@ -113,11 +107,12 @@ class ThreadCommunication(ThreadCommunicationBase):
         in_last_composed = False
 
         try:
-            command_template = self.dict_command_template[self.last_composed.command]
-            answer_analysis_last = command_template.answer_analysis
-            if answer_analysis_last:
-                m = re.search(answer_analysis_last, address)
-                cmd_template = self.last_composed.command_template
+            command_template_last = self.dict_command_template[
+                self.last_composed.command
+            ]
+            if command_template_last.answer_analysis:
+                m = re.search(command_template_last.answer_analysis, address)
+                cmd_template = command_template_last
                 in_last_composed = True
 
             if not m:
@@ -129,6 +124,30 @@ class ThreadCommunication(ThreadCommunicationBase):
                         cmd_template = command_template
                         break
 
+            if cmd_template:
+                if m:
+                    values = cmd_template.create_arg_dict(tuple(m.groups()) + args)
+                else:
+                    values = cmd_template.create_arg_dict(args)
+
+            if in_last_composed:  # match was found in self.last_composed
+                command = self.last_composed.command
+                if self.last_composed.request:
+                    mt = ComType.request_success
+                else:
+                    mt = ComType.command_success
+            elif m:  # match was found in dict_command_template
+                command = cmd_template.name
+                mt = ComType.message_status
+            else:  # address could not be associated with any command
+                command = None
+                values = (address, args)
+                mt = ComType.unidentifiable
+
+            cai = CommandRecvItem(self.name, command, values, mt)
+
+            self._put_into_answer_queue(cai)
+
         except TypeError as ex:
             self.logger.warning(
                 f"error analyzing message {address}:{args}. Error Message: {ex}"
@@ -138,28 +157,3 @@ class ThreadCommunication(ThreadCommunicationBase):
             )
             self._put_into_answer_queue(cai)
             return
-
-        if m:
-            values = cmd_template.create_arg_dict(tuple(m.groups()) + args)
-        else:
-            values = cmd_template.create_arg_dict(args)
-
-        self.logger.debug(f"received {address} with {values}")
-
-        if in_last_composed:  # match was found in self.last_composed
-            command = self.last_composed.command_template.name
-            if self.last_composed.request:
-                mt = ComType.request_success
-            else:
-                mt = ComType.command_success
-        elif m:  # match was found in dict_command_template
-            command = cmd_template.name
-            mt = ComType.message_status
-        else:  # address could not be associated with any command
-            command = None
-            values = (address, values)
-            mt = ComType.unidentifiable
-
-        cai = CommandRecvItem(self.name, command, values, mt)
-
-        self._put_into_answer_queue(cai)

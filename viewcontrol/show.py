@@ -980,7 +980,7 @@ class SequenceModule(Base):
     def list_commands(self):
         list_commands = list()
         for mc in self._list_commands:
-            list_commands.append((mc.command, mc.delay))
+            list_commands.append((mc.combo_command, mc.delay))
         return list_commands
 
     def _element_set(self, element):
@@ -1051,7 +1051,7 @@ class SequenceModule(Base):
         if isinstance(command_obj, tuple):
             command_obj = command_obj[0]
         for mod_com in self._list_commands:
-            if mod_com.command is command_obj:
+            if mod_com.combo_command is command_obj:
                 self._list_commands.remove(mod_com)
         # WARNING no verificartion if and which elements were deleted (or not)
         return True
@@ -1300,7 +1300,7 @@ class EventModule(Base):
     def list_commands(self):
         list_commands = list()
         for mc in self._list_commands:
-            list_commands.append((mc.command, mc.delay))
+            list_commands.append((mc.combo_command, mc.delay))
         return list_commands
 
     @property
@@ -1457,7 +1457,7 @@ class ComEventModule(EventModule):
         return self._copy_super_attributes(copy)
 
     def check_event(self, data):
-        if data.device == self._device:
+        if data.combo_device == self._device:
             if data.type == self.com_type:
                 if data.full_answer and self.match_parameters:
                     if data.full_answer[0] == self._name_command:
