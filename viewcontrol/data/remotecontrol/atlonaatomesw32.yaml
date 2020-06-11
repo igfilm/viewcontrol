@@ -6,7 +6,16 @@
   request_object: 'InputStatus'
   command_composition: null
   answer_analysis: 'InputStatus (\d)(\d)(\d)'
-  argument_mappings: null
+  argument_mappings:
+    "IN 1":
+        "no signal": 0
+        "signal": 1
+    "IN 2":
+        "no signal": 0
+        "signal": 1
+    "IN 3":
+        "no signal": 0
+        "signal": 1
 
 - !CommandTemplate
   name: Status
@@ -41,15 +50,18 @@
   argument_mappings: null
 
 - !CommandTemplate
-  name: PWSTA
+  name: Power Status
   description: "Displays the power status of the matrix."
   request_object: 'PWSTA'
   command_composition: null
   answer_analysis: '((?:PWON)|(?:PWOFF))'
-  argument_mappings: null    
+  argument_mappings:
+    "status":
+      "on": "PWON"
+      "off": "PWOFF"
 
 - !CommandTemplate
-  name: PWON
+  name: Power On
   description: "Turns the unit on. Front panel LED will illuminate blue when on."
   request_object: null
   command_composition: 'PWON'
@@ -57,7 +69,7 @@
   argument_mappings: null
 
 - !CommandTemplate
-  name: PWOFF
+  name: Power Off
   description: "Turns the unit off. Front panel LED will illuminate red when off."
   request_object: null
   command_composition: 'PWOFF'

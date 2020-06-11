@@ -182,6 +182,31 @@ class ThreadCommunicationBase(threading.Thread, abc.ABC):
         """
         pass
 
+    def _compose(self, command_item):
+
+        try:
+            command_template = self.dict_command_template.get(command_item.command)
+            if command_item.request:
+                str_formatter = command_template.request_object
+            else:
+                str_formatter = command_template.command_composition
+
+            if isinstance(command_item.arguments, dict):
+                arguments = command_template.sorted_tuple_from_dict(
+                    command_item.arguments)
+            else:
+                arguments = command_item.arguments
+
+            str_composed = str_formatter.format(*arguments)
+            self.logger.debug(f"Composed String: {str_composed}")
+            return str_composed
+
+        except TypeError as ex:
+            self.logger.warning(
+                f"error composing message {command_item}. Error Message: {ex}"
+            )
+            return None
+
 
 class ComPackage(object):
     """

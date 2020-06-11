@@ -4,7 +4,7 @@
   name: PowerOn
   description: Power On
   request_object: null
-  answer_analysis: null
+  answer_analysis: '@0PW00'
   command_composition: '@0PW00'
   argument_mappings: null
 
@@ -12,7 +12,7 @@
   name: PowerOff
   description: Power Off
   request_object: null
-  answer_analysis: null
+  answer_analysis: '@0PW01'
   command_composition: '@0PW01'
   argument_mappings: null
 
@@ -21,7 +21,7 @@
   description: Stop
   request_object: null
   command_composition: '@02354'
-  answer_analysis: null
+  answer_analysis: '@02354'
   argument_mappings: null
 
 - !CommandTemplate
@@ -29,7 +29,7 @@
   description: Play
   request_object: null
   command_composition: '@02353'
-  answer_analysis: null
+  answer_analysis: '@02353'
   argument_mappings: null
 
 - !CommandTemplate
@@ -37,7 +37,7 @@
   description: Play Pause
   request_object: null
   command_composition: '@02348'
-  answer_analysis: null
+  answer_analysis: '@02348'
   argument_mappings: null
 
 - !CommandTemplate
@@ -46,7 +46,8 @@
   request_object: null
   command_composition: '@0Tr{0:04d}'  
   answer_analysis:  null
-  argument_mappings: null
+  argument_mappings:
+    "number": "int"
 
 - !CommandTemplate
   name: Track Jump Next
@@ -70,7 +71,8 @@
   request_object: null
   command_composition: '@0PCGp{0:04d}'
   answer_analysis: null
-  argument_mappings: null
+  argument_mappings:
+    "number": "int"
 
 - !CommandTemplate
   name: Group Jump Next
@@ -105,10 +107,11 @@
   command_composition: '@0PCTMD{}'
   answer_analysis: '@0PCTMD([A-Z]{2})'  
   argument_mappings:
-    EL: Ellapsed
-    RM: Remain
-    TL: Total Ellapsed
-    TR: Total Remain
+    "mode":
+      Ellapsed : EL
+      Remain : RM
+      Total Ellapsed : TL
+      Total Remain : TR
 
 - !CommandTemplate
   name: Hide OSD

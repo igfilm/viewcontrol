@@ -42,7 +42,7 @@ class CommandRecvItem:
 
     Args:
         device (str): name representation of device.
-        command (str): name representation of command.
+        command (str or None): name representation of command.
         values (dict or tuple): tuple if command is None.
         message_type (ComType): condition under which message was received.
 
@@ -138,7 +138,12 @@ class CommandTemplate(yaml.YAMLObject):
                 mapping dict
 
         """
+
         d = dict()
+
+        if len(args) == 0:
+            return d
+
         for key, arg in zip(self.argument_mappings.keys(), args):
             d[key] = self.cast_argument_as_type(key, arg)
         return d

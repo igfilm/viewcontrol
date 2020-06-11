@@ -1,6 +1,7 @@
 import re
 
 from ._threadcommunication import ThreadCommunication
+from ..commanditembase import CommandRecvItem
 from ..threadcommunicationbase import DeviceType, ComType, ComPackage
 
 
@@ -13,58 +14,71 @@ class DenonDN500BD(ThreadCommunication):
 
     def __init__(self, target_ip, target_port):
         self.last_recv = None
-        super().__init__("DenonDN500BD", target_ip, target_port)
+        super().__init__(target_ip, target_port)
 
-    def interpret(self, strs_recv, sock):
+    def _analyse(self, str_recv):
         # split strings when multiple commands are contained
-        m = re.findall(r"((?:ack\+\@|@0\?{0,1}|ack\+|nack|ack)(?:\w|\d)*)", strs_recv)
+        m = re.findall(r"((?:ack\+\@|@0\?{0,1}|ack\+|nack|ack)(?:\w|\d)*)", str_recv)
         if m:
             for str_recv in m:
-                # answer is send twice, skip second one
-                if str_recv == self.last_recv:
-                    continue
-                else:
-                    self.last_recv = str_recv
-
-                answ_obj = ComPackage(self.name)
-                # data is answer of device
-                if self.dict_command_template and self.last_cmd:
-                    dict_obj = self.dict_command_template.get(self.last_cmd[0].name_cmd)
-                else:
-                    dict_obj = None
-                if str_recv == "nack":
-                    answ_obj.command_obj = self.last_cmd[0]
-                    answ_obj.send_cmd_string = self.last_cmd[1]
-                    if not dict_obj:
-                        answ_obj.type = ComType.failed
-                    elif not dict_obj.string_requ or self.last_cmd[0].get_parameters():
-                        answ_obj.type = ComType.command_failed
+                try:
+                    # answer is send twice, skip second one
+                    if str_recv == self.last_recv:
+                        continue
                     else:
-                        answ_obj.type = ComType.request_failed
-                elif str_recv.startswith("ack"):
-                    answ_obj.command_obj = self.last_cmd[0]
-                    answ_obj.send_cmd_string = self.last_cmd[1]
-                    answ_obj.recv_answer_string = str_recv
-                    if not dict_obj:
-                        answ_obj.type = ComType.success
-                    elif not dict_obj.string_requ or self.last_cmd[0].get_parameters():
-                        answ_obj.type = ComType.command_success
-                    else:
-                        answ_obj.type = ComType.request_success
-                # data is a status information
-                elif str_recv.startswith("@0"):
-                    # TODO does not work, bd expects ack
-                    # sock.send(chr(0x06).encode())
-                    answ_obj.recv_answer_string = str_recv
-                    answ_obj.type = ComType.message_status
+                        self.last_recv = str_recv
 
-                if self.dict_command_template and answ_obj.type not in [
-                    ComType.failed,
-                    ComType.command_failed,
-                    ComType.request_failed,
-                ]:
-                    answ_obj.full_answer = self.dict_command_template.get_full_answer(
-                        answ_obj.recv_answer_string
+                    m2 = None
+                    command_template = None
+                    command_item = None
+
+                    if "ack" in str_recv:
+                        command_item, _ = self.last_cmd
+                        if str_recv == "nack":
+                            if command_item.request:
+                                mt = ComType.request_failed
+                            else:
+                                mt = ComType.command_failed
+                        else:
+                            if command_item.request:
+                                mt = ComType.request_success
+                            else:
+                                mt = ComType.command_success
+                        command_template = self.dict_command_template[command_item.command]
+
+                    # data is a status information, command must be looked up.
+                    elif str_recv.startswith("@0"):
+                        mt = ComType.message_status
+
+                        for command_template in self.dict_command_template.values():
+                            if not command_template.answer_analysis:
+                                continue
+                            m2 = re.search(command_template.answer_analysis, str_recv)
+                            if m2:
+                                break
+                    else:
+                        raise ValueError("string can not be classified")
+
+                    # starts with ack or @0
+                    if command_item:
+                        if not m2:
+                            m2 = re.search(command_template.answer_analysis, str_recv)
+
+                        if m2:
+                            values = command_template.create_arg_dict(tuple(m2.groups()))
+                        else:
+                            values = ()
+                    else:
+                        values = None
+
+                    cai = CommandRecvItem(self.name, command_template.name, values, mt)
+                    self._put_into_answer_queue(cai)
+
+                except ValueError as ex:
+                    self.logger.warning(
+                        f"error analyzing message {str_recv}. Error Message: {ex}"
                     )
-
-                self._put_into_answer_queue(answ_obj)
+                    cai = CommandRecvItem(
+                        self.name, None, str_recv, ComType.unidentifiable
+                    )
+                    self._put_into_answer_queue(cai)

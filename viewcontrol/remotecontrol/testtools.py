@@ -10,7 +10,7 @@ import tkinter.ttk as tkk
 from tkinter import scrolledtext
 
 from viewcontrol.remotecontrol import supported_devices
-from viewcontrol.remotecontrol.commanditembase import CommandSendItem
+from viewcontrol.remotecontrol.commanditembase import CommandSendItem, format_arg_count
 from viewcontrol.remotecontrol.processcmd import ThreadCmd
 from viewcontrol.remotecontrol.processcmd import ProcessCmd
 
@@ -70,12 +70,13 @@ class Application(tk.Frame):
                 self.selcted_command.name,
                 arguments=args,
                 request=False,
-                delay=5
             )
         )
 
     def send_request(self):
         args = self.collect_args()
+        if format_arg_count(self.selcted_command.request_object) == 0:
+            args = ()
         self.logger.info(f"Request: {self.selcted_command} {args}")
         self.send_command_item(
             CommandSendItem(
@@ -83,7 +84,6 @@ class Application(tk.Frame):
                 self.selcted_command.name,
                 arguments=args,
                 request=True,
-                delay=10
             )
         )
 
@@ -133,6 +133,7 @@ class Application(tk.Frame):
         row = 4
         if not self.selcted_command.argument_mappings:
             return
+
         for key, mapping in self.selcted_command.argument_mappings.items():
             lab = tk.Label(self)
             if isinstance(mapping, str):
@@ -172,7 +173,7 @@ class Application(tk.Frame):
 
 if __name__ == "__main__":
 
-    MULTIPROCESSING = False
+    MULTIPROCESSING = True
 
     class MyHandler(logging.Handler):
         """
@@ -226,7 +227,11 @@ if __name__ == "__main__":
         queue_send = queue.Queue()
         queue_receive = queue.Queue()
 
-    device = {"Behringer X32": ("192.168.178.22", 10023)}
+    device = {
+        "Behringer X32": ("192.168.178.22", 10023),
+        "Atlona AT-OME-SW32": ("192.168.178.202", 23),
+        "Denon DN-500BD": ("192.168.178.201", 9030),
+    }
 
     if MULTIPROCESSING:
         stop_event = multiprocessing.Event()

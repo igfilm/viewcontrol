@@ -31,7 +31,7 @@ class ThreadCommunication(ThreadCommunicationBase):
         self.dispatcher = Dispatcher()
         self.dispatcher.set_default_handler(self._analyse)
         self.last_composed = None
-        super().__init__(self.__class__.device_name)
+        super().__init__(self.device_name)
 
     def listen(self):
 
@@ -55,27 +55,27 @@ class ThreadCommunication(ThreadCommunicationBase):
                 while self.q_comand.empty():
                     server.handle_request()
 
-    def _compose(self, cmd_item):
+    def _compose(self, command_item):
         """parse arguments to address and arguments returning OSC message parts.
 
         First counts the fields in the address string and inserts the arguments into it
         if there are one. Rest of the arguments are returned as new tuple.
 
         Args:
-            cmd_item (CommandSendItem): CommandItem to be composed from.
+            command_item (CommandSendItem): CommandItem to be composed from.
 
         """
 
-        command_template = self.dict_command_template[cmd_item.command]
-        if cmd_item.request:
+        command_template = self.dict_command_template[command_item.command]
+        if command_item.request:
             address = command_template.request_object
         else:
             address = command_template.command_composition
 
-        if isinstance(cmd_item.arguments, dict):
-            arguments = command_template.sorted_tuple_from_dict(cmd_item.arguments)
+        if isinstance(command_item.arguments, dict):
+            arguments = command_template.sorted_tuple_from_dict(command_item.arguments)
         else:
-            arguments = cmd_item.arguments
+            arguments = command_item.arguments
 
         try:
             address_arg_count = format_arg_count(address)
@@ -84,7 +84,7 @@ class ThreadCommunication(ThreadCommunicationBase):
             if arg_address_tuple:
                 address = address.format(*arg_address_tuple)
 
-            self.last_composed = cmd_item
+            self.last_composed = command_item
 
             if len(arg_argument_tuple) == 0:
                 return address, ""
@@ -94,7 +94,7 @@ class ThreadCommunication(ThreadCommunicationBase):
                 return address, list(arg_argument_tuple)
         except TypeError as ex:
             self.logger.warning(
-                f"error composing message {address}:{cmd_item.arguments}. Error "
+                f"error composing message {address}:{command_item.arguments}. Error "
                 f"Message: {ex}"
             )
             return None, None
@@ -120,9 +120,8 @@ class ThreadCommunication(ThreadCommunicationBase):
                 cmd_template = self.last_composed.command_template
                 in_last_composed = True
 
-            dict_template = self.dict_command_template
-            if not m and dict_template:
-                for name, command_template in dict_template.items():
+            if not m:
+                for name, command_template in self.dict_command_template.items():
                     if not command_template.answer_analysis:
                         continue
                     m = re.search(command_template.answer_analysis, address)

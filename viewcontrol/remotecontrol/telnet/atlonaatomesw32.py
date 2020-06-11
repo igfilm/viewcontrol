@@ -1,6 +1,7 @@
 import re
 
 from ._threadcommunication import ThreadCommunication
+from ..commanditembase import CommandRecvItem
 from ..threadcommunicationbase import DeviceType, ComType, ComPackage
 
 
@@ -12,67 +13,56 @@ class AtlonaATOMESW32(ThreadCommunication):
     end_seq = "\r"
     error_seq = r"Command FAILED: \((.*)\)"
 
-    def __init__(self, target_ip, target_port):
-        super().__init__("AtlonaATOMESW32", target_ip, target_port)
-        self.echo_recived = False
-
-    def contains_error(self, string):
-        if re.search(AtlonaATOMESW32.error_seq, string):
-            return True
-        else:
-            return False
-
-    def interpret(self, str_recv, tn):
-        # check if recived massage is valid
+    def _analyse(self, str_recv):
+        # check if received massage is valid
         if str_recv and str_recv.endswith(b"\r\n"):
-            # if its equal the send message its the echo sen by client
-            # therefore continue and recive the wanted answer
-            if not self.echo_recived and self.last_send_data in str_recv:
-                self.echo_recived = True
+            # if its equal the send message its the echo seen by client
+            # therefore continue and receive the wanted answer
+            if not self.feedback_received and self.last_send_data in str_recv:
+                self.feedback_received = True
                 return
 
-            # decode mesage
+            # decode message
             str_recv = str_recv.decode().rstrip()
+            self.logger.debug(f"analyzing string '{str_recv}'")
 
-            answ_obj = ComPackage(self.name)
-            # if an echo was recived a command was send before,
-            # else a status message was send from the client
-            if self.echo_recived:
-                answ_obj.command_obj = self.last_send_cmd_obj
-                answ_obj.recv_answer_string = str_recv
-                if self.dict_command_template:
-                    dict_obj = self.dict_command_template.get(
-                        self.last_send_cmd_obj.name_cmd
+            try:
+                if self.feedback_received:
+                    command_template = self.dict_command_template.get(
+                        self.last_send_command_item.command
                     )
-                    if self.contains_error(str_recv):
-                        if dict_obj.string_requ:
-                            answ_obj.type = ComType.request_failed
+                    if self._contains_error(str_recv):
+                        if self.last_send_command_item.request:
+                            mt = ComType.request_failed
                         else:
-                            answ_obj.type = ComType.command_failed
+                            mt = ComType.command_failed
                     else:
-                        if dict_obj.string_requ:
-                            answ_obj.type = ComType.request_success
+                        if self.last_send_command_item.request:
+                            mt = ComType.request_success
                         else:
-                            answ_obj.type = ComType.command_success
-                        # answ_obj.full_answer = self.dict_c.get_full_answer(
-                        #    answ_obj.recv_answer_string)
-                else:
-                    if self.contains_error(str_recv):
-                        answ_obj.type = ComType.failed
-                    else:
-                        answ_obj.type = ComType.success
-                self.echo_recived = False
-            else:
-                answ_obj.recv_answer_string = str_recv
-                answ_obj.type = ComType.message_status
+                            mt = ComType.command_success
+                    self.feedback_received = False
 
-            if self.dict_command_template and not answ_obj.type in [
-                ComType.failed,
-                ComType.command_failed,
-                ComType.request_failed,
-            ]:
-                answ_obj.full_answer = self.dict_command_template.get_full_answer(
-                    answ_obj.recv_answer_string
+                    m = re.search(command_template.answer_analysis, str_recv)
+
+                    if m:
+                        values = command_template.create_arg_dict(tuple(m.groups()))
+                    else:
+                        values = ()
+
+                    cai = CommandRecvItem(self.name, command_template.name, values,
+                                          mt)
+                    self._put_into_answer_queue(cai)
+
+            except TypeError as ex:
+                self.logger.warning(
+                    f"error analyzing message {str_recv}. Error Message: {ex}"
                 )
+                cai = CommandRecvItem(
+                    self.name, None, str_recv, ComType.unidentifiable
+                )
+                self._put_into_answer_queue(cai)
+                return
 
-            self._put_into_answer_queue(answ_obj)
+    def _telnet_login(self, tn):
+        tn.read_until(b"Welcome to TELNET.\r\n")

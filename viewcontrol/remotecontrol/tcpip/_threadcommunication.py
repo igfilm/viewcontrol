@@ -20,14 +20,14 @@ class ThreadCommunication(ThreadCommunicationBase):
     start_seq = NotImplemented
     end_seq = NotImplemented
 
-    def __init__(self, name, target_ip, target_port, buffer_size=1024):
+    def __init__(self, target_ip, target_port, buffer_size=1024):
         # target_ip, target_port are a typical config file variable
         self.target_ip = target_ip
         self.target_port = target_port
         self.BUFFER_SIZE = buffer_size
         self.socket = None
         self.last_cmd = None
-        super().__init__(name)
+        super().__init__(self.device_name)
 
     def listen(self):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as self.socket:
@@ -39,11 +39,11 @@ class ThreadCommunication(ThreadCommunicationBase):
             while True:
 
                 if not self.q_comand.empty():
-                    cmd_obj = self.q_comand.get()
-                    val = self.compose(cmd_obj)
-                    self.last_cmd = (cmd_obj, val)
-                    self.logger.debug("Send: {}".format(val))
-                    self.socket.send(val.encode())
+                    command_item = self.q_comand.get()
+                    str_send = self._combine_command(self._compose(command_item))
+                    self.last_cmd = (command_item, str_send)
+                    self.logger.debug("Send: {}".format(str_send))
+                    self.socket.send(str_send.encode())
 
                 # listen to socket for incoming messages until timeout
                 try:
@@ -53,31 +53,22 @@ class ThreadCommunication(ThreadCommunicationBase):
                     str_recv = None
 
                 if str_recv:
-                    self.interpret(str_recv, self.socket)
+                    self._analyse(str_recv)
 
-    def compose(self, cmd_obj):
-        if self.dict_command_template:
-            dict_obj = self.dict_command_template.get(cmd_obj.name_cmd)
-            if not dict_obj:
-                self.logger.debug(
-                    "Command '{}' not found in dict_deneon! Sending string as it is.".format(
-                        cmd_obj.name_cmd
-                    )
-                )
-                str_send = cmd_obj.name_cmd
-            else:
-                args = cmd_obj.get_parameters()
-                if args:
-                    str_send = dict_obj.get_send_command(*args)
-                else:
-                    if dict_obj.string_requ:
-                        str_send = dict_obj.get_send_request()
-                    else:
-                        str_send = dict_obj.get_send_command()
-            return str_send
-        else:
-            self.logger.debug("No dictionary found! Sending string as it is.")
-            return str_send
-
-    def interpret(self, val, sock):
+    def _analyse(self, str_recv):
         NotImplementedError("please overwrite in subclass")
+
+    def _combine_command(self, str_command):
+        """Adds the start and end sequence to each commannd string if not already there.
+        Args:
+            str_command (str): command to be combined
+        Returns:
+            str: combined command
+        """
+        tmp_start_seq = ""
+        if self.start_seq not in str_command:
+            tmp_start_seq = self.start_seq
+        tmp_end_seq = ""
+        if self.end_seq not in str_command:
+            tmp_end_seq = self.end_seq
+        return tmp_start_seq + str_command + tmp_end_seq
