@@ -10,8 +10,8 @@ import tkinter.ttk as tkk
 from tkinter import scrolledtext
 
 from viewcontrol.remotecontrol import supported_devices
-from viewcontrol.remotecontrol.commanditembase import CommandSendItem
-from viewcontrol.remotecontrol.commanditembase import format_arg_count
+from viewcontrol.remotecontrol.commanditem import CommandSendItem
+from viewcontrol.remotecontrol.commanditem import format_arg_count
 from viewcontrol.remotecontrol.processcmd import ThreadCmd
 from viewcontrol.remotecontrol.processcmd import ProcessCmd
 
@@ -19,7 +19,8 @@ from viewcontrol.remotecontrol.processcmd import ProcessCmd
 class Application(tk.Frame):
     """Simple tkinter frame to send commands and requests with arguments"""
 
-    def __init__(self, master=None, queue_send=None, logger_config=None):
+    # noinspection PyShadowingNames
+    def __init__(self, master=None, queue_send=None):
         super().__init__(master)
         self.queue_send = queue_send
         self.master = master
@@ -57,6 +58,8 @@ class Application(tk.Frame):
         )
         self.button_command.grid(row=3, column=1)
 
+        self.selected_device = None
+        self.selected_command = None
         self.dynamic_elements = dict()
 
         self.logger = logging.getLogger("App")
@@ -64,11 +67,11 @@ class Application(tk.Frame):
 
     def send_command(self):
         args = self.collect_args()
-        self.logger.info(f"Command: {self.selcted_command} {args}")
+        self.logger.info(f"Command: {self.selected_command} {args}")
         self.send_command_item(
             CommandSendItem(
-                self.selcted_device.device_name,
-                self.selcted_command.name,
+                self.selected_device.device_name,
+                self.selected_command.name,
                 arguments=args,
                 request=False,
             )
@@ -76,13 +79,13 @@ class Application(tk.Frame):
 
     def send_request(self):
         args = self.collect_args()
-        if format_arg_count(self.selcted_command.request_object) == 0:
+        if format_arg_count(self.selected_command.request_composition) == 0:
             args = ()
-        self.logger.info(f"Request: {self.selcted_command} {args}")
+        self.logger.info(f"Request: {self.selected_command} {args}")
         self.send_command_item(
             CommandSendItem(
-                self.selcted_device.device_name,
-                self.selcted_command.name,
+                self.selected_device.device_name,
+                self.selected_command.name,
                 arguments=args,
                 request=True,
             )
@@ -92,11 +95,10 @@ class Application(tk.Frame):
         self.queue_send.put(ci)
 
     def combo_selected(self, event):
-        self.slected_device_name = event.widget.get()
-        self.logger.info(self.slected_device_name)
-        self.selcted_device = supported_devices.get(self.slected_device_name)
-        self.device_dict = self.selcted_device.dict_command_template
-        self.combo_command["values"] = list(self.device_dict)
+        selected_device_name = event.widget.get()
+        self.logger.info(f"Device '{selected_device_name}' selected.")
+        self.selected_device = supported_devices.get(selected_device_name)
+        self.combo_command["values"] = list(self.selected_device.dict_command_template)
         self.combo_command["state"] = "readonly"
         self.combo_command.set("")
         self.combo_command.update()
@@ -105,19 +107,22 @@ class Application(tk.Frame):
         self.clear_args()
 
     def combo_selected_command(self, event):
-        self.selcted_command_name = event.widget.get()
-        self.logger.info(self.selcted_command_name)
-        self.selcted_command = self.selcted_device.dict_command_template.get(
-            self.selcted_command_name
+        selected_command_name = event.widget.get()
+        self.logger.info(
+            f"Command '{selected_command_name}' "
+            f"of device '{self.selected_device.name}' selected."
+        )
+        self.selected_command = self.selected_device.dict_command_template.get(
+            selected_command_name
         )
         self.description_text.delete(1.0, tk.END)
-        if self.selcted_command.description:
-            self.description_text.insert(tk.INSERT, self.selcted_command.description)
+        if self.selected_command.description:
+            self.description_text.insert(tk.INSERT, self.selected_command.description)
         self.button_request["state"] = "disabled"
         self.button_command["state"] = "disabled"
-        if self.selcted_command.request_object:
+        if self.selected_command.request_composition:
             self.button_request["state"] = "active"
-        if self.selcted_command.command_composition:
+        if self.selected_command.command_composition:
             self.button_command["state"] = "active"
         self.button_request.update()
         self.button_command.update()
@@ -133,15 +138,15 @@ class Application(tk.Frame):
         self.clear_args()
         row = 4
 
-        if not self.selcted_command.argument_mappings:
+        if not self.selected_command.argument_mappings:
             return
 
-        for key, mapping in self.selcted_command.argument_mappings.items():
+        for key, mapping in self.selected_command.argument_mappings.items():
             lab = tk.Label(self)
             if isinstance(mapping, str):
                 lab["text"] = f"{key} ({mapping})"
                 widg = tk.Text(self, width=20, height=1)
-            else:  # dicr or list
+            else:  # dict or list
                 lab["text"] = key
                 widg = tkk.Combobox(self, width=20)
                 if isinstance(mapping, dict):
@@ -157,7 +162,7 @@ class Application(tk.Frame):
         args = list()
         try:
             for key, (_, widg) in self.dynamic_elements.items():
-                command = self.selcted_command
+                command = self.selected_command
                 mapping = command.argument_mappings.get(key)
 
                 if isinstance(mapping, str):
@@ -185,6 +190,7 @@ if __name__ == "__main__":
         configured for those loggers.
         """
 
+        # noinspection PyShadowingNames
         def handle(self, record):
             logger = logging.getLogger(record.name)
             logger.handle(record)

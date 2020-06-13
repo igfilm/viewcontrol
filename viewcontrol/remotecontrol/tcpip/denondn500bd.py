@@ -1,7 +1,7 @@
 import re
 
 from ._threadcommunication import ThreadCommunication
-from ..commanditembase import CommandRecvItem
+from ..commanditem import CommandRecvItem
 from ..threadcommunicationbase import DeviceType
 from ..threadcommunicationbase import ComType
 

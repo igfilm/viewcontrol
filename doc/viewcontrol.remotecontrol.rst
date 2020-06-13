@@ -67,12 +67,12 @@ Rules for YAML:
     in the current state of the package, CommandTemplates must be in the CommandTemplateList to be passable through queues. This is because only the command name is stored in the CommandItems.
 
 
-.. autoclass:: viewcontrol.remotecontrol.commanditembase.CommandTemplate
+.. autoclass:: viewcontrol.remotecontrol.commanditem.CommandTemplate
     :members:
     :show-inheritance:
 
 
-.. autoclass:: viewcontrol.remotecontrol.commanditembase.CommandTemplateList
+.. autoclass:: viewcontrol.remotecontrol.commanditem.CommandTemplateList
     :members:
     :show-inheritance:
 

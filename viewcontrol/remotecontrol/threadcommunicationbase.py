@@ -10,7 +10,7 @@ from enum import Enum
 from blinker import signal
 
 from . import dict_command_folder
-from .commanditembase import CommandTemplateList
+from .commanditem import CommandTemplateList
 
 
 class DeviceType(Enum):
@@ -77,7 +77,7 @@ class ThreadCommunicationBase(threading.Thread, abc.ABC):
         self.logger = logging.getLogger(self.name)
         self.type_exception = OSError
         self.signal = signal("{}_send".format(self.name))
-        self.signal.connect(self.__subscribe_signal_send)
+        self.signal.connect(self._put_into_command_queue)
         self.dict_command_template = None
         self.dict_command_template_path = None
         tmp_mod_name = self.__module__.split(".")[-1]
@@ -113,15 +113,17 @@ class ThreadCommunicationBase(threading.Thread, abc.ABC):
         self.logger.info("<~~ received data: '{}'".format(str(obj)))
         self.__answer_queue.put(obj)
 
-    def __subscribe_signal_send(self, obj):
+    def _put_into_command_queue(self, command_send_item, comment=""):
         """proxy collecting all events (send requests) for this device
 
         Args:
-            obj (object or commanditembase.CommandItemBase):
+            command_send_item (CommandSendItem):
 
         """
-        self.logger.info("~~> sending data: '{}'".format(obj))
-        self.q_command.put(obj)
+        if comment:
+            comment = "  # " + comment
+        self.logger.info("~~> sending data: '{}'{}".format(command_send_item, comment))
+        self.q_command.put(command_send_item)
 
     def run(self):
         """Method representing the thread’s activity.

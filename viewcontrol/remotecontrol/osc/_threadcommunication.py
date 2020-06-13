@@ -1,15 +1,15 @@
 import re
+import socket
 
 from pythonosc.dispatcher import Dispatcher
 from pythonosc.osc_server import ThreadingOSCUDPServer
 from pythonosc.udp_client import SimpleUDPClient
 
-from ..threadcommunicationbase import ThreadCommunicationBase
+from ..commanditem import CommandRecvItem
+from ..commanditem import CommandSendItem
+from ..commanditem import format_arg_count
 from ..threadcommunicationbase import ComType
-
-from ..commanditembase import CommandSendItem
-from ..commanditembase import CommandRecvItem
-from ..commanditembase import format_arg_count
+from ..threadcommunicationbase import ThreadCommunicationBase
 
 
 class ThreadCommunication(ThreadCommunicationBase):
@@ -28,31 +28,42 @@ class ThreadCommunication(ThreadCommunicationBase):
         # target_ip, target_port are a typical config file variable
         self.target_ip = target_ip
         self.target_port = target_port
-        self.dispatcher = Dispatcher()
-        self.dispatcher.set_default_handler(self._analyse)
+        self._dispatcher = Dispatcher()
+        self._dispatcher.set_default_handler(self._analyse)
         self.last_composed = None
         super().__init__(self.device_name)
 
     # noinspection PyProtectedMember,PyProtectedMember
     def listen(self):
 
+        client = _SimpleUDPClient(self.target_ip, self.target_port)
+
+        server = _ThreadingOSCUDPServer(client.sock_connection, self._dispatcher)
+        server.timeout = 0.01
+
+        self.logger.debug(f"osc client connection: {client.sock_connection}")
+        self.logger.debug(f"osc server connection: {server.sock_connection}")
+
         while True:  # while loop of thread
 
-            client = SimpleUDPClient(self.target_ip, self.target_port)
+            while self.q_command.empty():
+                server.handle_request()
+
             command_item = self.q_command.get(block=True)
+            if not command_item:
+                # used if subclass does decides at compose time not to send the command
+                continue
             address, value = self._compose(command_item)
             if not address:
-                cai = CommandRecvItem(self.name, command_item.name, (), ComType.failed)
+                continue
+            if address is TypeError:
+                # address and value are none when error occurred during composing
+                cai = CommandRecvItem(
+                    self.device_name, command_item.command, (), ComType.failed
+                )
                 self._put_into_answer_queue(cai)
                 continue
             client.send_message(address, value)
-            c_address, c_port = client._sock.getsockname()  # get source port
-            client._sock.close()
-
-            with ThreadingOSCUDPServer((c_address, c_port), self.dispatcher) as server:
-                server.timeout = 0.1
-                while self.q_command.empty():
-                    server.handle_request()
 
     def _compose(self, command_item):
         """parse arguments to address and arguments returning OSC message parts.
@@ -67,7 +78,7 @@ class ThreadCommunication(ThreadCommunicationBase):
 
         command_template = self.dict_command_template[command_item.command]
         if command_item.request:
-            address = command_template.request_object
+            address = command_template.request_composition
         else:
             address = command_template.command_composition
 
@@ -87,16 +98,16 @@ class ThreadCommunication(ThreadCommunicationBase):
 
             if len(arg_argument_tuple) == 0:
                 return address, ""
-            elif len(arg_argument_tuple) == 1:
+            if len(arg_argument_tuple) == 1:
                 return address, arg_argument_tuple[0]
-            else:
-                return address, list(arg_argument_tuple)
+            return address, list(arg_argument_tuple)
+
         except TypeError as ex:
             self.logger.warning(
                 f"error composing message {address}:{command_item.arguments}. Error "
                 f"Message: {ex}"
             )
-            return None, None
+            return TypeError, TypeError
 
     def _analyse(self, address, *args):
 
@@ -124,6 +135,7 @@ class ThreadCommunication(ThreadCommunicationBase):
                         cmd_template = command_template
                         break
 
+            values = None
             if cmd_template:
                 if m:
                     values = cmd_template.create_arg_dict(tuple(m.groups()) + args)
@@ -157,3 +169,23 @@ class ThreadCommunication(ThreadCommunicationBase):
             )
             self._put_into_answer_queue(cai)
             return
+
+
+class _SimpleUDPClient(SimpleUDPClient):
+    def __init__(self, target_ip, target_port):
+        super(_SimpleUDPClient, self).__init__(target_ip, target_port)
+        self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._sock.bind(("", 0))
+
+    @property
+    def sock_connection(self):
+        return self._sock.getsockname()
+
+
+class _ThreadingOSCUDPServer(ThreadingOSCUDPServer):
+
+    allow_reuse_address = True
+
+    @property
+    def sock_connection(self):
+        return self.socket.getsockname()

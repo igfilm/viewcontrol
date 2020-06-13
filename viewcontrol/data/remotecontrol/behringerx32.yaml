@@ -3,7 +3,7 @@
 - !CommandTemplate
   name: Set Mute Group
   description: Set mute group on or off
-  request_object: null
+  request_composition: null
   command_composition: '/config/mute/{}'
   answer_analysis: '/config/mute/(\d)'
   argument_mappings:
@@ -15,7 +15,7 @@
 - !CommandTemplate
   name: Set Mix Fader Level
   description: Set Fader (01:32) Level 0-1
-  request_object: null
+  request_composition: null
   command_composition: '/ch/{0:02d}/mix/fader'
   answer_analysis: '/ch/(\d\d)/mix/fader'
   argument_mappings:
@@ -25,7 +25,7 @@
 - !CommandTemplate
   name: Set Mix On
   description: Set Fader (01:32) Level 0-1
-  request_object: null
+  request_composition: null
   command_composition: '/ch/{0:02d}/mix/on'
   answer_analysis: '/ch/(\d\d)/mix/on'
   argument_mappings:
@@ -37,7 +37,7 @@
 - !CommandTemplate
   name: Info
   description: null
-  request_object: '/info'
+  request_composition: '/info'
   command_composition: null
   answer_analysis: '/info'
   argument_mappings:
@@ -49,7 +49,7 @@
 - !CommandTemplate
   name: Status
   description: null
-  request_object: '/status'
+  request_composition: '/status'
   command_composition: null
   answer_analysis: '/status'
   argument_mappings:
@@ -57,10 +57,20 @@
     "ip": "str"
     "server type": "str"
 
+# do not change the entries below this comment, there are used in code!
 - !CommandTemplate
   name: XRemote
   description: ask nicely to recive status changes for next 10 seconds
-  request_object: '/xremote'
+  request_composition: '/xremote'
   command_composition: null
   answer_analysis: null
   argument_mappings: null
+
+- !CommandTemplate
+  name: XRemote repeating
+  description: send message \xremote every 10 seconds (build in device not part of protocol)
+  request_composition: null
+  command_composition: '/xremote'
+  answer_analysis: null
+  argument_mappings:
+    onoff: ["ON", "OFF"]

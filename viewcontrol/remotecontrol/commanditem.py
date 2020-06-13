@@ -35,7 +35,9 @@ class CommandSendItem(CommandItem):
         self.request = request
 
     def __str__(self):
-        return f"{self.device}({self.command})-{self.arguments}-request:{self.request}"
+        return (
+            f"{self.device} -> {self.command} {self.arguments}; request:{self.request}"
+        )
 
 
 class CommandRecvItem:
@@ -57,7 +59,10 @@ class CommandRecvItem:
         self.message_type = message_type
 
     def __str__(self):
-        return f"{self.device}({self.command})-{self.values}-{self.message_type}"
+        return (
+            f"{self.device} <- {self.command} {self.values}; "
+            f"request:{self.message_type}"
+        )
 
 
 class CommandTemplate(yaml.YAMLObject):
@@ -68,7 +73,8 @@ class CommandTemplate(yaml.YAMLObject):
     Attributes:
         name (str): short and easy name of the command (for drop-down list).
         description (str): description of command including parameter description.
-        request_object (obj): object to be send to request something, usually a string.
+        request_composition (obj): object to be send to request something, usually a
+            string.
         command_composition (obj): object composing the object to be send from
             arguments. Simplest implementation is a string following PEP 3101 of
             str.format() for the arguments parsing.
@@ -94,7 +100,7 @@ class CommandTemplate(yaml.YAMLObject):
         self,
         name,
         description,
-        request_object=None,
+        request_composition=None,
         command_composition=None,
         answer_analysis=None,
         argument_mappings=None,
@@ -102,7 +108,7 @@ class CommandTemplate(yaml.YAMLObject):
 
         self.name = name
         self.description = description
-        self.request_object = request_object
+        self.request_composition = request_composition
         self.command_composition = command_composition
         self.answer_analysis = answer_analysis
         self.argument_mappings = argument_mappings
@@ -132,8 +138,8 @@ class CommandTemplate(yaml.YAMLObject):
 
     @property
     def number_request_arguments(self):
-        if self.request_object:
-            return format_arg_count(self.request_object, raise_ex=False)
+        if self.request_composition:
+            return format_arg_count(self.request_composition, raise_ex=False)
         return 0
 
     @property
@@ -241,7 +247,7 @@ class CommandTemplate(yaml.YAMLObject):
         for att in [
             "name",
             "description",
-            "request_object",
+            "request_composition",
             "command_composition",
             "answer_analysis",
             "argument_mappings",
@@ -286,13 +292,13 @@ class CommandTemplate(yaml.YAMLObject):
             mapping_arg_number = len(self.argument_mappings)
 
         # request_arg_number = None  # 0 if request object exists else None
-        if self.request_object:
+        if self.request_composition:
             request_arg_number = try_arg_count_formatter(
-                "request_object", self.request_object
+                "request_composition", self.request_composition
             )
 
             if not smaller_equal(request_arg_number, mapping_arg_number):
-                prm("5", "request_object", "more formatter's than arguments")
+                prm("5", "request_composition", "more formatter's than arguments")
 
         # command_arg_number = None
         if self.command_composition:
