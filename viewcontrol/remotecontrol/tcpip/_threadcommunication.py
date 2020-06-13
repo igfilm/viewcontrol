@@ -18,26 +18,26 @@ class ThreadCommunication(ThreadCommunicationBase):
     start_seq = NotImplemented
     end_seq = NotImplemented
 
-    def __init__(self, target_ip, target_port, buffer_size=1024):
+    def __init__(self, target_ip, target_port, buffer_size=1024, stop_event=None):
         # target_ip, target_port are a typical config file variable
         self.target_ip = target_ip
         self.target_port = target_port
         self.BUFFER_SIZE = buffer_size
         self.socket = None
         self.last_cmd = None
-        super().__init__(self.device_name)
+        super().__init__(self.device_name, stop_event=stop_event)
 
-    def listen(self):
+    def _main(self):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as self.socket:
             self.socket.connect((self.target_ip, self.target_port))
 
             # timeout for socket.recv, also ensures 20ms between each send
             self.socket.settimeout(0.02)
 
-            while True:
+            while not self.stop_event.is_set():
 
-                if not self.q_command.empty():
-                    command_item = self.q_command.get()
+                if not self._queue_command.empty():
+                    command_item = self._queue_command.get()
                     str_send = self._combine_command(self._compose(command_item))
                     self.last_cmd = (command_item, str_send)
                     self.logger.debug("Send: {}".format(str_send))

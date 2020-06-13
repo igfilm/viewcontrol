@@ -152,7 +152,7 @@ class CommandTemplate(yaml.YAMLObject):
         """get argument type from mapping for given key
 
         Returns:
-            type:
+            type: type of value of key
 
         """
         mapping = self.argument_mappings[key]
@@ -177,7 +177,7 @@ class CommandTemplate(yaml.YAMLObject):
                 mapping dict
 
         Returns:
-            dict:
+            dict: dict with argument description and casted values
 
         """
 
@@ -321,7 +321,7 @@ class CommandTemplate(yaml.YAMLObject):
                 prm("3", "mapping_arg_number", "answer analysis needs a mapping dict")
 
         if self.__is_valid_err_counter == 0:
-            logging.getLogger().debug(f"command {self.name} isn valid")
+            logging.getLogger().debug(f"command {self.name} is valid")
 
         return self.__is_valid_err_counter
 
@@ -355,6 +355,12 @@ class CommandTemplateList(dict):
                 self.update({obj.name: obj})
 
     def is_valid(self):
+        """Returns 0 if all Templates in list are valid by checking a list of criteria.
+
+        Returns:
+            int: number of errors
+
+        """
         errors = 0
         for command_template in self.values():
             errors += command_template.is_valid()

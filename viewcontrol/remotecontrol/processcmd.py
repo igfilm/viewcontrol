@@ -113,8 +113,11 @@ class CommandProcess:
             # TODO how will this work with different queues (and devices)
             ThreadCommunicationBase.set_answer_queue(self.queue_status)
 
+            stop_event = threading.Event()
             for name, connection in self.devices.items():
-                thread_device = supported_devices.get(name)(*connection)
+                thread_device = supported_devices.get(name)(
+                    stop_event=stop_event, *connection
+                )
                 self.threads.append(thread_device)
                 s = signal("{}_send".format(thread_device.device_name))
                 self.signals.update({thread_device.device_name: s})
@@ -154,7 +157,21 @@ class CommandProcess:
                 except queue.Empty:
                     continue
 
+            self.logger.info("stop flag set. stopping timers ...")
             [t.cancel() for t in self.timers]
+
+            stop_event.set()
+            self.logger.info("stop flag set. stopping threads ...")
+
+            count = -1
+            while count < len(self.threads):
+                count = 0
+                for thread in self.threads:
+                    if thread.is_alive():
+                        thread.join(timeout=0.01)
+                    else:
+                        count += 1
+
             self.logger.info("stop flag set. terminating processcmd")
 
         except Exception as e:

@@ -8,10 +8,9 @@ class BehringerX32(ThreadCommunication):
     device_name = "Behringer X32"
     device_type = DeviceType.audio
 
-    def __init__(self, target_ip, target_port):
-        super(BehringerX32, self).__init__(target_ip, target_port)
+    def __init__(self, target_ip, target_port, stop_event=None):
+        super().__init__(target_ip, target_port, stop_event=stop_event)
         self._timer_xremote = RepeatedTimer(9.9, self._send_xremote_request)
-        self._timer_xremote.daemon = True
 
     def _send_xremote_request(self):
         command_send_item = CommandSendItem(self.device_name, "XRemote", request=True)
@@ -23,11 +22,16 @@ class BehringerX32(ThreadCommunication):
                 self._timer_xremote.start()
                 self._send_xremote_request()
             else:
-                self._timer_xremote.stop()
+                self._timer_xremote.cancel()
             self.logger.info(f"data {command_item} not send. data is control data")
             return None, None
         else:
+            self.logger.warning(command_item)
             return super()._compose(command_item)
+
+    def _on_exit(self):
+        self._timer_xremote.cancel()
+        super()._on_exit()
 
 
 class MidasM32(BehringerX32):

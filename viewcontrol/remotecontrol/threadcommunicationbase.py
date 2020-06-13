@@ -3,7 +3,6 @@ import logging
 import os
 import queue
 import threading
-import time
 import warnings
 from enum import Enum
 
@@ -34,14 +33,23 @@ class ThreadCommunicationBase(threading.Thread, abc.ABC):
     provided by the main task.
 
     TODO: write metaclass to have __answer_queue as class property
-    TODO: maybe add stop event to all threads so they can finish what they are doing
 
     Args:
         name (str): name of the thread.
+        stop_event (threading.Event or multiprocessing.Event): see Attributes
         **kwargs: Arbitrary keyword arguments passed to parent (``threading.Thread``).
 
     Attributes:
         retry_interval(int): time in seconds between (re)connection attempts to devices.
+        stop_event (threading.Event or multiprocessing.Event): when set stops this
+            process and all device threads by asking nicely.
+        signal (blinker.Signal): Signal instance where command has to be send to.
+        type_exception (type or tuple of type): Exceptions which are caused by
+            connection errors with device. For different handling. Defaults to OSError.
+        dict_command_template (commanditem.CommandTemplateList): dictionary containing
+            all supported commands of class.
+        dict_command_template_path (pathlib.path): path to file dict_command_template
+            was loaded from.
 
     """
 
@@ -70,10 +78,15 @@ class ThreadCommunicationBase(threading.Thread, abc.ABC):
             cls.dict_command_template = CommandTemplateList(tmp_path)
             cls.dict_command_template.load_objects_from_yaml()
 
-    def __init__(self, name, **kwargs):
-        super().__init__(daemon=True, name=name, **kwargs)
-        self._stop_request = False
-        self.q_command = queue.Queue()
+    def __init__(self, name, stop_event=None, **kwargs):
+        if not stop_event:
+            stop_event = threading.Event()
+            daemon = True
+        else:
+            daemon = False
+        super().__init__(daemon=daemon, name=name, **kwargs)
+        self.stop_event = stop_event
+        self._queue_command = queue.Queue()
         self.logger = logging.getLogger(self.name)
         self.type_exception = OSError
         self.signal = signal("{}_send".format(self.name))
@@ -123,7 +136,7 @@ class ThreadCommunicationBase(threading.Thread, abc.ABC):
         if comment:
             comment = "  # " + comment
         self.logger.info("~~> sending data: '{}'{}".format(command_send_item, comment))
-        self.q_command.put(command_send_item)
+        self._queue_command.put(command_send_item)
 
     def run(self):
         """Method representing the thread’s activity.
@@ -141,9 +154,11 @@ class ThreadCommunicationBase(threading.Thread, abc.ABC):
         if not ThreadCommunicationBase.__answer_queue:
             self.logger.error("Answer Queue Not Set!")
             raise Exception("Answer Queue Not Set!")
-        while not self._stop_request:
+
+        self._on_enter()
+        while not self.stop_event.is_set():
             try:
-                self.listen()
+                self._main()
             except self.type_exception as ex:
                 if type(ex) is OSError:
                     self.logger.warning(
@@ -162,7 +177,8 @@ class ThreadCommunicationBase(threading.Thread, abc.ABC):
                             ex.args,
                         )
                     )
-                time.sleep(ThreadCommunicationBase.retry_interval)
+                # like sleep, but can be stopped by the stop event
+                self.stop_event.wait(ThreadCommunicationBase.retry_interval)
             except Exception as ex:
                 try:
                     raise
@@ -172,8 +188,10 @@ class ThreadCommunicationBase(threading.Thread, abc.ABC):
                         exc_info=ex,
                     )
 
+        self._on_exit()
+
     @abc.abstractmethod
-    def listen(self):
+    def _main(self):
         """This method is the equivalent to the Thread().run() method and
 
         contains any protocol/device specific code. This includes:
@@ -186,7 +204,7 @@ class ThreadCommunicationBase(threading.Thread, abc.ABC):
         pass
 
     def _compose(self, command_item):
-        """blueprint to compose a massage, implementation should fit most needs
+        """Blueprint to compose a massage, this implementation should fit most needs.
 
         Args:
             command_item (CommandSendItem):
@@ -218,13 +236,29 @@ class ThreadCommunicationBase(threading.Thread, abc.ABC):
             return None
 
     def _analyse(self, *args):
-        """function should be used to analyze code to have a common structure.
+        """Function should be used to analyze code to have a common structure.
 
         Args:
             *args: arguments, depending on protocol.
 
         """
         NotImplementedError("please overwrite in subclass")
+
+    def _on_enter(self):
+        """Called before entering the main loop, to be overwritten in sub class, or not.
+
+        Call super method to maintain consitent logging, when overwriting.
+
+        """
+        self.logger.debug("entering main loop")
+
+    def _on_exit(self):
+        """Called after leaving the main loop, to be overwritten in sub class, or not.
+
+        Call super method to maintain consitent logging, when overwriting.
+
+        """
+        self.logger.debug("exiting main loop")
 
 
 class ComPackage(object):

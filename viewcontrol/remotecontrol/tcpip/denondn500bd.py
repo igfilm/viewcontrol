@@ -14,9 +14,9 @@ class DenonDN500BD(ThreadCommunication):
     end_seq = "\r"
     error_seq = "@0BDERBUSY"
 
-    def __init__(self, target_ip, target_port):
+    def __init__(self, target_ip, target_port, stop_event=None):
         self.last_recv = None
-        super().__init__(target_ip, target_port)
+        super().__init__(target_ip, target_port, stop_event=stop_event)
 
     def _analyse(self, str_recv):
 

@@ -12,7 +12,6 @@ class RepeatedTimer:
         self.args = args
         self.kwargs = kwargs
         self.is_running = False
-        self.start()
 
     def _run(self):
         self.is_running = False
@@ -25,9 +24,10 @@ class RepeatedTimer:
             self._timer.start()
             self.is_running = True
 
-    def stop(self):
-        self._timer.cancel()
-        self.is_running = False
+    def cancel(self):
+        if self._timer:
+            self._timer.cancel()
+            self.is_running = False
 
 
 class RenewableTimer:

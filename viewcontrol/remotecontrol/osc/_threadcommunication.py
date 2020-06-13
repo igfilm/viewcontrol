@@ -24,17 +24,17 @@ class ThreadCommunication(ThreadCommunicationBase):
 
     """
 
-    def __init__(self, target_ip, target_port):
+    def __init__(self, target_ip, target_port, stop_event=None):
         # target_ip, target_port are a typical config file variable
         self.target_ip = target_ip
         self.target_port = target_port
         self._dispatcher = Dispatcher()
         self._dispatcher.set_default_handler(self._analyse)
         self.last_composed = None
-        super().__init__(self.device_name)
+        super().__init__(self.device_name, stop_event=stop_event)
 
     # noinspection PyProtectedMember,PyProtectedMember
-    def listen(self):
+    def _main(self):
 
         client = _SimpleUDPClient(self.target_ip, self.target_port)
 
@@ -44,12 +44,14 @@ class ThreadCommunication(ThreadCommunicationBase):
         self.logger.debug(f"osc client connection: {client.sock_connection}")
         self.logger.debug(f"osc server connection: {server.sock_connection}")
 
-        while True:  # while loop of thread
+        while not self.stop_event.is_set():  # while loop of thread
 
-            while self.q_command.empty():
+            while self._queue_command.empty():
                 server.handle_request()
+                if self.stop_event.is_set():
+                    return
 
-            command_item = self.q_command.get(block=True)
+            command_item = self._queue_command.get()
             if not command_item:
                 # used if subclass does decides at compose time not to send the command
                 continue

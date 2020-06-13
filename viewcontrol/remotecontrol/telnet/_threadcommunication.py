@@ -21,16 +21,16 @@ class ThreadCommunication(ThreadCommunicationBase):
     end_seq = ""
     error_seq = NotImplemented
 
-    def __init__(self, target_ip, target_port):
+    def __init__(self, target_ip, target_port, stop_event=None):
         # target_ip, target_port are a typical config file variable
         self.target_ip = target_ip
         self.target_port = target_port
-        super().__init__(self.device_name)
+        super().__init__(self.device_name, stop_event=stop_event)
         self.last_send_command_item = None
         self.last_send_data = None
         self.feedback_received = False
 
-    def listen(self):
+    def _main(self):
 
         last_send_time = time.time()
 
@@ -39,7 +39,7 @@ class ThreadCommunication(ThreadCommunicationBase):
             # and wait until welcome message is received
             self._telnet_login(tn)
             # while loop of thread
-            while True:
+            while not self.stop_event.is_set():
 
                 time_tmp = time.time()
                 # only send new command from queue conditions are met:
@@ -49,9 +49,9 @@ class ThreadCommunication(ThreadCommunicationBase):
                 if (
                     time_tmp - last_send_time > 0.5
                     and not self.feedback_received
-                    and not self.q_command.empty()
+                    and not self._queue_command.empty()
                 ):
-                    command_item = self.q_command.get()
+                    command_item = self._queue_command.get()
                     self.last_send_command_item = command_item
                     str_send = self._combine_command(self._compose(command_item))
                     self.logger.debug("Send: {0:<78}R{0}".format(str_send))
