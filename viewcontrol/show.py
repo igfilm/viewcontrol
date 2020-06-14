@@ -1,17 +1,15 @@
 import abc
-import importlib
-import inspect
 import os
 import pathlib
 import pickle
-import pkgutil
 import queue
 import re
 import sys
 from shutil import copyfile
 
-# run in headless environment
+from .remotecontrol.commanditem import CommandSendItem
 
+# run in headless environment
 if os.name == "posix" and "DISPLAY" in os.environ:
     import pynput
 
@@ -29,6 +27,7 @@ from wand.drawing import Drawing
 from wand.image import Image
 
 from viewcontrol.remotecontrol.threadcommunicationbase import ComType
+from .remotecontrol import supported_devices
 
 Base = declarative_base()
 
@@ -64,30 +63,23 @@ class ShowOptions:
         self._devices = list()
         self._elements_load_from_db()
 
-        package = importlib.import_module("viewcontrol.remotecontrol")
-        for _, modname, ispkg in pkgutil.iter_modules(package.__path__):
-            if ispkg:
-                try:
-                    mod = importlib.import_module(
-                        "viewcontrol.remotecontrol.{}.threadcommunication".format(
-                            modname
-                        )
-                    )
-                except ModuleNotFoundError:
-                    continue
-                clsmembers = inspect.getmembers(mod, inspect.isclass)
-                for clsm in clsmembers:
-                    x = clsm[1].mro()
-                    if len(x) > 5:
-                        if not clsm[0] in self.devices.keys():
-                            print("adding " + clsm[0])
-                            self._add_device(clsm[1])
+        for key, value in supported_devices.items():
+            if key not in self.devices.keys():
+                self._add_device(value)
 
     @property
     def devices(self):
         device_dict = dict()
         for device in self._devices:
             device_dict.update({device.name: device})
+        return device_dict
+
+    @property
+    def enabled_devices(self):
+        device_dict = dict()
+        for device in self._devices:
+            if device.enabled:
+                device_dict.update({device.name: device})
         return device_dict
 
     def _add_device(self, device_class):
@@ -181,9 +173,9 @@ class ShowOptionDevice(Base):
             device_class (ThreadCommunicationBase): class object device
 
         """
-        self._name = device_class.__name__
+        self._name = device_class.device_name
         self._protocol = device_class.mro()[0].__module__.split(".")[2]
-        self._dev_class = str(device_class)
+        self._dev_class = str(device_class.device_type)
 
 
 class ManagerBase(abc.ABC):
@@ -840,11 +832,8 @@ class StartElement(MediaElement):
     """Class for start MediaElement cointaining the program picture."""
 
     def __init__(self):
-        super().__init__(
-            "viewcontrol",
-            str(viewcontrol_picture_path()),
-            str(viewcontrol_picture_path()),
-        )
+        file_path = pathlib.Path(__file__).parent.joinpath("data", "viewcontrol.png")
+        super().__init__("viewcontrol", file_path, file_path)
 
 
 class MediaElementManager(ManagerBase):
@@ -982,10 +971,7 @@ class SequenceModule(Base):
 
     @property
     def list_commands(self):
-        list_commands = list()
-        for mc in self._list_commands:
-            list_commands.append((mc.combo_command, mc.delay))
-        return list_commands
+        return [command.command for command in self._list_commands]
 
     def _element_set(self, element):
         """set element depending of class"""
@@ -1019,46 +1005,44 @@ class SequenceModule(Base):
                 return False
         return True
 
-    def _command_add(self, command_delay_tuple):
+    def _command_add(self, command_object):
         """add a command to the command list
-        
+            # TODO write into docu
             delay can be:
                 > positiv: delay from start of object
                 > negativ: delay before end of object
-                > .9999  : delay at end of obj (send when obj is finished)
+                > -9999  : delay at end of obj (send when obj is finished)
                 > 0      : command send imediatly
             
             WARNING: delay will not be updtaed when element duration changes
         """
-
-        if not isinstance(command_delay_tuple, tuple):
-            command_delay_tuple = (command_delay_tuple, 0)
-        tmp = ModuleCommand()
-        tmp.command = command_delay_tuple[0]
-        if command_delay_tuple[1] < 0:
+        if command_object.delay is None:
+            command_object.delay = 0
+            # TODO: remove this
+        if command_object.delay < 0:
             if self._time:
-                if not command_delay_tuple[1] == -9999:
-                    tmp.delay = self._time + command_delay_tuple[1]
-                    if tmp.delay < 0:
-                        tmp.delay = 0
+                if not command_object.delay == -9999:
+                    command_object.delay = self._time + command_object.delay
+                    if command_object.delay < 0:
+                        command_object.delay = 0
                 else:
-                    tmp.delay = self._time
+                    command_object.delay = self._time
             else:
                 return False  # time not set negativ value noz possible
-        else:
-            tmp.delay = command_delay_tuple[1]
-        self._list_commands.append(tmp)
+
+        self._list_commands.append(ModuleCommand(command_object))
         return True
 
-    def command_remove(self, command_obj):
+    def command_remove(self, command_object):
         """remove a command from the command list"""
-        if isinstance(command_obj, tuple):
-            command_obj = command_obj[0]
-        for mod_com in self._list_commands:
-            if mod_com.combo_command is command_obj:
-                self._list_commands.remove(mod_com)
-        # WARNING no verificartion if and which elements were deleted (or not)
-        return True
+        try:
+            for module_command in self._list_commands:
+                if module_command.command == command_object:
+                    self._list_commands.remove(command_object)
+                    return True
+        except ValueError:
+            pass
+        return False
 
     def module_delete_self(self):
         self._deleted = True
@@ -1082,26 +1066,33 @@ class SequenceModule(Base):
         return SequenceModule("None", 0, element=StartElement(), time=5)
 
 
-class AssosciationCommand(Base):
+class AssociationCommand(Base):
+    """Association Table for Many to Many Relationships,
+
+    in which extra arguments can be saved.
+
+    """
 
     __tablename__ = "assosciation_command"
     _id = Column(Integer, primary_key=True, name="id")
     _etype = Column(String(10), name="etype")
 
     command_id = Column(Integer, ForeignKey("command_object.id"))
-    command = orm.relationship("CommandObject")
-
-    delay = Column(Integer)
+    command = orm.relationship("CommandObject", back_populates="_parents")
 
     __mapper_args__ = {
         "polymorphic_on": _etype,
-        "polymorphic_identity": "AssosciationCommand",
+        "polymorphic_identity": "AssociationCommand",
     }
 
+    def __init__(self, command_object):
+        self.command = command_object
 
-class ModuleCommand(AssosciationCommand):
-    """Assosication Table for Many to Many Relationship, with delay saved in 
-    association table
+
+class ModuleCommand(AssociationCommand):
+    """Association Table for Many to Many Relationship,
+
+    between Sequence Modules command_list and Command Objects.
     
     """
 
@@ -1113,7 +1104,12 @@ class ModuleCommand(AssosciationCommand):
     __mapper_args__ = {"polymorphic_identity": "ModuleCommand"}
 
 
-class EventCommand(AssosciationCommand):
+class EventCommand(AssociationCommand):
+    """Association Table for Many to Many Relationship,
+
+    between Event Modules command_list and Command Objects.
+
+    """
 
     event_module_id = Column(Integer, ForeignKey("event_module.id"))
     event_module = orm.relationship("EventModule", back_populates="_list_commands")
@@ -1122,123 +1118,86 @@ class EventCommand(AssosciationCommand):
 
 
 class CommandObject(Base):
-    """Command Database Object
+    """Object representing a remotecontrol.commanditem.CommandItem in show.
 
     """
 
     __tablename__ = "command_object"
     _id = Column(Integer, primary_key=True, name="id")
-    _parents = orm.relationship("ModuleCommand", back_populates="command")
-    _name = Column(String(50), name="name")
-    _device = Column(String(50), name="device")
-    _name_cmd = Column(String(50), name="name_cmd")
-    _cmd_parameter1_str = Column(String(20), name="cmd_parameter1_str")
-    _cmd_parameter2_str = Column(String(20), name="cmd_parameter2_str")
-    _cmd_parameter3_str = Column(String(20), name="cmd_parameter3_str")
-    _cmd_parameter1_pickled = Column(Binary(50), name="cmd_parameter1_pickled")
-    _cmd_parameter2_pickled = Column(Binary(50), name="cmd_parameter2_pickled")
-    _cmd_parameter3_pickled = Column(Binary(50), name="cmd_parameter3_pickled")
+    _parents = orm.relationship("AssociationCommand", back_populates="command")
+    _etype = Column(String(20), name="etype")
+    name = Column(String(50), name="name")
+    device = Column(String(50), name="device")
+    command = Column(String(50), name="name_cmd")
+    _arguments_str = Column(String(100))
+    _arguments_pickle = Column(Binary(100))
 
-    def __init__(self, name, device, name_cmd, *args):
-        self._name = name
-        self._name_cmd = name_cmd
-        self._device = device
-        if args:
-            self.set_parameters(*args)
+    __mapper_args__ = {
+        "polymorphic_on": _etype,
+        "polymorphic_identity": "AssosciationCommand",
+    }
+
+    def __init__(self, name, device, command, arguments=()):
+        self.name = name
+        self.device = device
+        self.command = command
+        self.arguments = arguments
 
     @orm.reconstructor
     def __init2__(self):
-        self._cmd_parameter1 = None
-        self._cmd_parameter2 = None
-        self._cmd_parameter3 = None
-        if self._cmd_parameter1_pickled:
-            self._cmd_parameter1 = pickle.loads(self._cmd_parameter1_pickled)
-        if self._cmd_parameter2_pickled:
-            self._cmd_parameter2 = pickle.loads(self._cmd_parameter2_pickled)
-        if self._cmd_parameter3_pickled:
-            self._cmd_parameter3 = pickle.loads(self._cmd_parameter3_pickled)
+        self._arguments = pickle.loads(self._arguments_pickle)
 
     @property
     def id(self):
         return self._id
 
     @property
-    def name(self):
-        return self._name
+    def arguments(self):
+        return self._arguments
 
-    @name.setter
-    def name(self, name):
-        self._name = name
+    @arguments.setter
+    def arguments(self, arg_tuple):
+        self._arguments = arg_tuple
+        self._arguments_pickle = pickle.dumps(arg_tuple)
+        self._arguments_str = str(arg_tuple)
+
+
+class CommandSendObject(CommandObject):
+    """Object representing a remotecontrol.commanditem.CommandSendItem in show."""
+
+    request = Column(Boolean)
+    delay = Column(Float)
+
+    __mapper_args__ = {"polymorphic_identity": "CommandSendItem"}
+
+    def __init__(self, name, device, command, arguments=(), delay=0, request=False):
+        super().__init__(name, device, command, arguments=arguments)
+        self.delay = delay
+        self.request = request
 
     @property
-    def device(self):
-        return self._device
-
-    @property
-    def name_cmd(self):
-        return self._name_cmd
-
-    def get_parameters(self):
-        if not self._cmd_parameter1:
-            return ()
-        elif self._cmd_parameter3:
-            return (
-                self._cmd_parameter1,
-                self._cmd_parameter2,
-                self._cmd_parameter3,
-            )
-        elif self._cmd_parameter2:
-            return (
-                self._cmd_parameter1,
-                self._cmd_parameter2,
-            )
-        else:  # self.cmd_parameter1
-            return (self._cmd_parameter1,)
-        # Note, brackets are tuple brackets
-
-    def set_parameters(self, *args):
-        if len(args) > 0:
-            self.__write_param(1, args[0])
-        if len(args) > 1:
-            self.__write_param(2, args[1])
-        if len(args) > 2:
-            self.__write_param(3, args[2])
-
-    def __write_param(self, num, value):
-        if not value:
-            return None, None
-        pickled = pickle.dumps(value)
-        str_value = str(value)
-        if num == 1:
-            self._cmd_parameter1 = value
-            self._cmd_parameter1_pickled = pickled
-            self._cmd_parameter1_str = str_value
-        elif num == 2:
-            self._cmd_parameter2 = value
-            self._cmd_parameter2_pickled = pickled
-            self._cmd_parameter2_str = str_value
-        elif num == 3:
-            self._cmd_parameter3 = value
-            self._cmd_parameter3_pickled = pickled
-            self._cmd_parameter3_str = str_value
-        else:
-            raise IndexError("Only 3 parameters can be saved into db!")
-
-    def __repr__(self):
-        if self.id:
-            id = self.id
-        else:
-            id = -1
-        return "{:04d}|{}|{}|{}|{}".format(
-            id, self._name, self._device, self._name_cmd, self.get_parameters()
+    def command_send_item(self):
+        return CommandSendItem(
+            self.device, self.command, self.arguments, self.delay, self.request
         )
+
+
+class CommandRecvObject(CommandObject):
+    """Object representing a remotecontrol.commanditem.CommandSendItem in show.
+
+    """
+
+    __mapper_args__ = {"polymorphic_identity": "CommandRecvObject"}
+
+    def __init__(self, name, device, command):
+        super().__init__(name, device, command)
 
 
 class CommandObjectManager(ManagerBase):
     def _elements_get_with_name_from_db(self, name, num=1):
         return (
             self._session.query(CommandObject)
-            .filter(CommandObject._name == name)
+            .filter(CommandObject.name == name)
             .first()
         )
 
@@ -1260,8 +1219,8 @@ class EventModule(Base):
     __tablename__ = "event_module"
     _id = Column(Integer, primary_key=True, name="id")
     _sequence_name = Column(String(50), nullable=True, name="sequence_name")
-    _name = Column(String(50), name="name")
     _etype = Column(String(10), name="etype")
+    _name = Column(String(50), name="name")
     _list_commands = orm.relationship(
         "EventCommand", back_populates="event_module", cascade="all, delete-orphan"
     )
@@ -1302,10 +1261,7 @@ class EventModule(Base):
 
     @property
     def list_commands(self):
-        list_commands = list()
-        for mc in self._list_commands:
-            list_commands.append((mc.combo_command, mc.delay))
-        return list_commands
+        return [command.command for command in self._list_commands]
 
     @property
     def jump_to_target_element(self):
@@ -1315,20 +1271,24 @@ class EventModule(Base):
     def jump_to_target_element(self, element):
         self._jump_to_target_element = element
 
-    def command_add(self, command_delay_tuple):
-        self._command_add(command_delay_tuple)
-        return True
+    def command_add(self, command_item):
+        """
 
-    def _command_add(self, command_delay_tuple):
-        if not isinstance(command_delay_tuple, tuple):
-            command_delay_tuple = (command_delay_tuple, 0)
-        tmp = EventCommand()
-        tmp.command = command_delay_tuple[0]
-        if command_delay_tuple[1] < 0:
+        Args:
+            command_item (CommandSendObject):
+
+        Returns:
+
+        """
+        if not isinstance(command_item, CommandSendObject):
+            raise TypeError()
+        return self._command_add(command_item)
+
+    def _command_add(self, command_item):
+        if command_item.delay < 0:
+            # no reference time to subtract from
             return False
-        else:
-            tmp.delay = command_delay_tuple[1]
-        self._list_commands.append(tmp)
+        self._list_commands.append(EventCommand(command_item))
         return True
 
     @abc.abstractmethod
@@ -1790,7 +1750,7 @@ class Show:
 
     ##### module methods #####
 
-    def _module_add(self, element, pos=None, time=None, commands_delay_tuple=[]):
+    def _module_add(self, element, pos=None, time=None, command_objects=None):
         """adds a module to playlist at given pos or at end when pos=None"""
         if not self._show_name:
             raise Exception("no show loaded")
@@ -1800,7 +1760,9 @@ class Show:
             else:
                 self._lm.element_add(element)
         sm = SequenceModule(self._show_name, None, element=element, time=time)
-        self._module_add_command(sm, commands_delay_tuple)
+        if command_objects:
+            for command_object in command_objects:
+                self._module_add_command(sm, command_object)
         return self._module_append_to_pos(sm, pos)
 
     def module_copy(self, pos, new_pos=None):
@@ -1869,9 +1831,9 @@ class Show:
     def module_add_command_to_pos(self, pos, command):
         return self._module_add_command(self._module_get_at_pos(pos), command)
 
-    def module_add_command_by_id_to_pos(self, pos, id, delay=0):
+    def module_add_command_by_id_to_pos(self, pos, id):
         cmd = self._cm._elements_get_by_id_from_db(id)
-        return self._module_add_command(self._module_get_at_pos(pos), (cmd, delay))
+        return self._module_add_command(self._module_get_at_pos(pos), cmd)
 
     def module_remove_all_commands_from_pos(self, pos):
         module = self._module_get_at_pos(pos)
@@ -2011,10 +1973,9 @@ class Show:
         module.media_element.text = new_text
         return True
 
-    def _module_add_command(self, module, command_delay_tuple):
-        if module.command_add(command_delay_tuple):
-            for cmd in module.list_commands:
-                self._cm.element_add(cmd[0])
+    def _module_add_command(self, module, command_object):
+        if command_object and module.command_add(command_object):
+            self._cm.element_add(command_object)
             self._session.commit()
             return True
         else:
@@ -2078,12 +2039,3 @@ class Show:
         )
         Session = orm.sessionmaker(bind=some_engine)
         return Session()
-
-
-# TODO move function in the util package when it is created (duplicate in processmpv)
-def data_folder_path() -> pathlib.Path:
-    return pathlib.Path(__file__).parent.joinpath("data")
-
-
-def viewcontrol_picture_path() -> pathlib.Path:
-    return data_folder_path().joinpath("viewcontrol.png")

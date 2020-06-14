@@ -110,13 +110,12 @@ class CommandProcess:
 
         try:
 
-            # TODO how will this work with different queues (and devices)
             ThreadCommunicationBase.set_answer_queue(self.queue_status)
 
             stop_event = threading.Event()
-            for name, connection in self.devices.items():
+            for name, device in self.devices.items():
                 thread_device = supported_devices.get(name)(
-                    stop_event=stop_event, *connection
+                    stop_event=stop_event, *device.connection
                 )
                 self.threads.append(thread_device)
                 s = signal("{}_send".format(thread_device.device_name))

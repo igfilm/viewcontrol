@@ -225,6 +225,9 @@ class ThreadCommunicationBase(threading.Thread, abc.ABC):
             else:
                 arguments = command_item.arguments
 
+            if len(arguments) == 0:
+                return str_formatter
+
             str_composed = str_formatter.format(*arguments)
             self.logger.debug(f"Composed String: {str_composed}")
             return str_composed
@@ -247,7 +250,7 @@ class ThreadCommunicationBase(threading.Thread, abc.ABC):
     def _on_enter(self):
         """Called before entering the main loop, to be overwritten in sub class, or not.
 
-        Call super method to maintain consitent logging, when overwriting.
+        Call super method to maintain consistent logging, when overwriting.
 
         """
         self.logger.debug("entering main loop")
@@ -255,7 +258,7 @@ class ThreadCommunicationBase(threading.Thread, abc.ABC):
     def _on_exit(self):
         """Called after leaving the main loop, to be overwritten in sub class, or not.
 
-        Call super method to maintain consitent logging, when overwriting.
+        Call super method to maintain consistent logging, when overwriting.
 
         """
         self.logger.debug("exiting main loop")
