@@ -2,6 +2,7 @@ import abc
 import importlib
 import inspect
 import os
+import pathlib
 import pickle
 import pkgutil
 import queue
@@ -10,6 +11,7 @@ import sys
 from shutil import copyfile
 
 # run in headless environment
+
 if os.name == "posix" and "DISPLAY" in os.environ:
     import pynput
 
@@ -839,7 +841,9 @@ class StartElement(MediaElement):
 
     def __init__(self):
         super().__init__(
-            "viewcontrol", "media/viewcontrol.png", "media/viewcontrol.png"
+            "viewcontrol",
+            str(viewcontrol_picture_path()),
+            str(viewcontrol_picture_path()),
         )
 
 
@@ -1369,7 +1373,7 @@ class KeyEventModule(EventModule):
 
     def check_event(self, data):
         if "pyinput" not in sys.modules:
-            key = self.key = pynput.keyboard.Key[self._key_name]
+            key = pynput.keyboard.Key[self.key_name]
             if key == data[1]:
                 if self.key_event == data[2]:
                     return True
@@ -2074,3 +2078,12 @@ class Show:
         )
         Session = orm.sessionmaker(bind=some_engine)
         return Session()
+
+
+# TODO move function in the util package when it is created (duplicate in processmpv)
+def data_folder_path() -> pathlib.Path:
+    return pathlib.Path(__file__).parent.joinpath("data")
+
+
+def viewcontrol_picture_path() -> pathlib.Path:
+    return data_folder_path().joinpath("viewcontrol.png")
