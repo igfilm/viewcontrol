@@ -1,4 +1,5 @@
 import multiprocessing
+import pathlib
 import threading
 import functools
 import os
@@ -191,5 +192,14 @@ class DummyMpv:
             self.mpv_observer_stat("d_time-remaining", tr)
 
     def player_reset_playlist(self):
-        self.player.play("media/viewcontrol.png")
+        self.player.play(str(viewcontrol_picture_path()))
         self.player["image-display-duration"] = "INFINITY"
+
+
+# TODO move function in the util package when it is created (duplicate in show)
+def data_folder_path() -> pathlib.Path:
+    return pathlib.Path(__file__).parent.parent.joinpath("data")
+
+
+def viewcontrol_picture_path() -> pathlib.Path:
+    return data_folder_path().joinpath("viewcontrol.png")
