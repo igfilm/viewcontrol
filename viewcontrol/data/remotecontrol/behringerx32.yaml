@@ -1,0 +1,76 @@
+# Partial List of Commands for the Behringer X32 console
+
+- !CommandTemplate
+  name: Set Mute Group
+  description: Set mute group on or off
+  request_composition: null
+  command_composition: '/config/mute/{}'
+  answer_analysis: '/config/mute/(\d)'
+  argument_mappings:
+    "group": [1,2,3,4,5,6]
+    "onoff":
+      "ON": 1
+      "OFF": 0
+
+- !CommandTemplate
+  name: Set Mix Fader Level
+  description: Set Fader (01:32) Level 0-1
+  request_composition: null
+  command_composition: '/ch/{0:02d}/mix/fader'
+  answer_analysis: '/ch/(\d\d)/mix/fader'
+  argument_mappings:
+    "fader": "int"
+    "level": "float"
+
+- !CommandTemplate
+  name: Set Mix On
+  description: Set Fader (01:32) Level 0-1
+  request_composition: null
+  command_composition: '/ch/{0:02d}/mix/on'
+  answer_analysis: '/ch/(\d\d)/mix/on'
+  argument_mappings:
+    "group": "int"
+    "onoff":
+      "ON": 1
+      "OFF": 0
+
+- !CommandTemplate
+  name: Info
+  description: null
+  request_composition: '/info'
+  command_composition: null
+  answer_analysis: '/info'
+  argument_mappings:
+    "verison 1": "str"
+    "server type": "str"
+    "model": "str"
+    "verison 2": "str"
+
+- !CommandTemplate
+  name: Status
+  description: null
+  request_composition: '/status'
+  command_composition: null
+  answer_analysis: '/status'
+  argument_mappings:
+    "status": "str"
+    "ip": "str"
+    "server type": "str"
+
+# do not change the entries below this comment, there are used in code!
+- !CommandTemplate
+  name: XRemote
+  description: ask nicely to recive status changes for next 10 seconds
+  request_composition: '/xremote'
+  command_composition: null
+  answer_analysis: null
+  argument_mappings: null
+
+- !CommandTemplate
+  name: XRemote repeating
+  description: send message \xremote every 10 seconds (build in device not part of protocol)
+  request_composition: null
+  command_composition: '/xremote'
+  answer_analysis: null
+  argument_mappings:
+    onoff: ["ON", "OFF"]

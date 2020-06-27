@@ -178,11 +178,15 @@ class ViewControl(object):
         self.logger.info("loaded Show: {}".format(self.playlist.show_name))
 
         if not self.argpars_result.threading:
+
+            self.stop_event = threading.Event()
+
             self.process_cmd = ProcessCmd(
-                self.config_queue_logger,
                 self.cmd_status_queue,
                 self.cmd_control_queue,
-                self.playlist.show_options.devices,
+                self.playlist.show_options.enabled_devices,
+                self.stop_event,
+                self.config_queue_logger,
             )
 
             self.process_mpv = ProcessMpv(
@@ -192,11 +196,15 @@ class ViewControl(object):
                 self.argpars_result.screen,
             )
         else:
+
+            self.stop_event = multiprocessing.Event()
+
             self.process_cmd = ThreadCmd(
-                self.logger,
                 self.cmd_status_queue,
                 self.cmd_control_queue,
-                self.playlist.show_options.devices,
+                self.playlist.show_options.enabled_devices,
+                self.stop_event,
+
             )
 
             self.process_mpv = ThreadMpv(
@@ -257,12 +265,12 @@ class ViewControl(object):
         """send command object to process/thread: process_cmd
 
         Args:
-            command_obj  (show.CommandObject): objected containing
+            command_obj  (show.CommandSendObject): objected containing
                 command details
 
         """
         self.logger.info("Sending CommandObject '{}'".format(command_obj))
-        self.cmd_control_queue.put(command_obj)
+        self.cmd_control_queue.put(command_obj.command_send_item)
 
     def player_resume(self):
         """resume playback and timers
@@ -404,31 +412,31 @@ class ViewControl(object):
             self.sig_cmd_prop.send(data)
             self.event_queue.put(data)
 
+    def thread_event_system(self):
+        """Thread: event system for user defined events
+
+        compares every received communication package with user defined
+        event list. If event matches, run/trigger in show.EventModule
+        specified action.
+
+        """
+        while True:
+            data = self.event_queue.get(block=True)
+            if isinstance(data, ComPackage):  # ComEvent
+                etype = show.ComEventModule
+            elif isinstance(data, tuple) and data[0] == "KeyEvent":  # KeyEvent
+                etype = show.KeyEventModule
+            else:
+                return
+            for mod in self.playlist.eventlist:
+                if isinstance(mod, etype):
+                    if mod.check_event(data):
+                        for cmd_tpl in mod.list_commands:
+                            self.sig_cmd_command.send(cmd_tpl)
+                        if mod.jump_to_target_element:
+                            self.playlist.notify(mod.jump_to_target_element)
+
     if "pyinput" not in sys.modules:
-
-        def thread_event_system(self):
-            """Thread: event system for user defined events
-
-            compares every received communication package with user defined
-            event list. If event matches, run/trigger in show.EventModule
-            specified action.
-
-            """
-            while True:
-                data = self.event_queue.get(block=True)
-                if isinstance(data, ComPackage):  # ComEvent
-                    etype = show.ComEventModule
-                elif isinstance(data, tuple) and data[0] == "KeyEvent":  # KeyEvent
-                    etype = show.KeyEventModule
-                else:
-                    return
-                for mod in self.playlist.eventlist:
-                    if isinstance(mod, etype):
-                        if mod.check_event(data):
-                            for cmd_tpl in mod.list_commands:
-                                self.sig_cmd_command.send(cmd_tpl)
-                            if mod.jump_to_target_element:
-                                self.playlist.notify(mod.jump_to_target_element)
 
         def on_press(self, key):
             """pynput event listener: key event on press"""
@@ -444,9 +452,9 @@ class ViewControl(object):
 
             self.event_queue.put(("KeyEvent", key, "on_press"))
 
-    def on_release(self, key):
-        """pynput event listener: key event on release"""
-        self.event_queue.put(("KeyEvent", key, "on_release"))
+        def on_release(self, key):
+            """pynput event listener: key event on release"""
+            self.event_queue.put(("KeyEvent", key, "on_release"))
 
     def handle_exception(self, exc_type, exc_value, exc_traceback):
         """Exception handler to log unhandled exceptions in main thread

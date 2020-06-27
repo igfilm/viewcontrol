@@ -1,0 +1,241 @@
+# Partial List of Commands for Deoneo DN-500BD Blu-Ray Player
+
+#4-1-1. Key Control
+
+- !CommandTemplate
+  name: PowerOn
+  description: Power On
+  request_composition: null
+  answer_analysis: '@0PW00'
+  command_composition: '@0PW00'
+  argument_mappings: null
+
+- !CommandTemplate
+  name: PowerOff
+  description: Power Off
+  request_composition: null
+  answer_analysis: '@0PW01'
+  command_composition: '@0PW01'
+  argument_mappings: null
+
+- !CommandTemplate
+  name: Stop
+  description: Stop
+  request_composition: null
+  command_composition: '@02354'
+  answer_analysis: '@02354'
+  argument_mappings: null
+
+- !CommandTemplate
+  name: Play
+  description: Play
+  request_composition: null
+  command_composition: '@02353'
+  answer_analysis: '@02353'
+  argument_mappings: null
+
+- !CommandTemplate
+  name: Pause
+  description: Play Pause
+  request_composition: null
+  command_composition: '@02348'
+  answer_analysis: '@02348'
+  argument_mappings: null
+
+- !CommandTemplate
+  name: Track Jump
+  description: Track/Chapter Jump
+  request_composition: null
+  command_composition: '@0Tr{0:04d}'  
+  answer_analysis:  null
+  argument_mappings:
+    "number": "int"
+
+- !CommandTemplate
+  name: Track Jump Next
+  description: Track/Chapter(BD) Jump Next
+  request_composition: null
+  command_composition: '@02332'
+  answer_analysis: null
+  argument_mappings: null
+
+- !CommandTemplate
+  name: Track Jump Prev
+  description: Track/Chapter(BD) Jump Previous
+  request_composition: null
+  command_composition: '@02333'
+  answer_analysis: null
+  argument_mappings: null
+
+- !CommandTemplate
+  name: Group Jump
+  description: Group/Title(BD)/Folder(USB) Jump
+  request_composition: null
+  command_composition: '@0PCGp{0:04d}'
+  answer_analysis: null
+  argument_mappings:
+    "number": "int"
+
+- !CommandTemplate
+  name: Group Jump Next
+  description: Group/Title(BD)/Folder(USB) Jump Next
+  request_composition: null
+  command_composition: '@0PCGPNX'
+  answer_analysis: null
+  argument_mappings: null
+
+- !CommandTemplate
+  name: Group Jump Prev
+  description: Group/Title(BD)/Folder(USB) Jump Previous
+  request_composition: null
+  command_composition: '@0PCGPPV'
+  answer_analysis: null
+  argument_mappings: null
+
+- !CommandTemplate
+  name: IR Lock
+  description: IR Remote Lock on/off
+  request_composition: '@0?PCIRLK'
+  command_composition: '@0PCIRLK{}'
+  answer_analysis: '@0PCIRLK([0,1]{2})'
+  argument_mappings:
+    state:
+      IR Lock On: "00"
+      IR Lock Off: "01"
+
+- !CommandTemplate
+  name: Time Mode
+  description: Time Mode Code for time on display
+  request_composition: '@0?PCTMD'
+  command_composition: '@0PCTMD{}'
+  answer_analysis: '@0PCTMD([A-Z]{2})'  
+  argument_mappings:
+    mode:
+      Ellapsed: EL
+      Remain: RM
+      Total Ellapsed: TL
+      Total Remain: TR
+
+- !CommandTemplate
+  name: Hide OSD
+  description: Complete hiding of the icon displayed on the screen.
+  request_composition: '@0?DVHOSD'
+  command_composition: '@0DVHOSD{}'
+  answer_analysis: '@0DVHOSD([0,1]{2})'
+  argument_mappings:
+    mode:
+      Hide OSD On: "00"
+      Hide OSD Off: "01"
+
+- !CommandTemplate
+  name: Mute
+  description: Play
+  request_composition: '@0?mt'
+  command_composition: '@0mt{}'
+  answer_analysis: '@0mt([0,1]{2})'
+  argument_mappings:
+    mode:
+      Mute On: "00"
+      Mute Off: "01"
+
+#4-1-3. Current Status Information
+
+- !CommandTemplate
+  name: Media Status
+  description: Media Status
+  request_composition: '@0?CD'
+  command_composition: null
+  answer_analysis: '@0CD([A-Z]{2})'  
+  argument_mappings:
+    status:
+      No Disk: NC
+      Disk In: CI
+      Unformat: UF
+      Tray Opening: TO
+      Tray Close: TC
+      Tray Error: TE
+
+- !CommandTemplate
+  name: Status
+  description: Status
+  request_composition: '@0?ST'
+  command_composition: null
+  answer_analysis: '@0ST([A-Z]{2,4})'  
+  argument_mappings:
+    status:
+      Fast Play Forward: DVFF
+      Fast Play Revers: DVFR
+      FS Play: DVFS
+      Home: DVHM
+      Slow Play Forward: DVSF
+      Step play: DVSP
+      Slow Play Revers: DVSR
+      Setup: DVSU
+      Track Menu: DVTR
+      Menu: ED
+      Play: PL
+      Pause: PP
+
+- !CommandTemplate
+  name: Total Track Number
+  description: Total Track Number
+  request_composition: '@0?Tt'
+  command_composition: null
+  answer_analysis: '@0Tt([0-9]{4}|UNKN)'
+  argument_mappings:
+    number: "int"
+
+- !CommandTemplate
+  name: Track Number
+  description: Track Number
+  request_composition: '@0?Tr'
+  command_composition: null
+  answer_analysis: '@0Tr([0-9]{4}|UNKN)'
+  argument_mappings:
+    number: "int"
+
+- !CommandTemplate
+  name: Total Group Number
+  description: Group Number
+  request_composition: '@0?PCTG'
+  command_composition: null
+  answer_analysis: '@0PCTG([0-9]{4}|UNKN)'
+  argument_mappings:
+    number: "int"
+
+- !CommandTemplate
+  name: Group Number
+  description: Group Number
+  request_composition: '@0?PCGp'
+  command_composition: null
+  answer_analysis: '@0PCGp([0-9]{4}|UNKN)'
+  argument_mappings:
+    number: "int"
+
+
+
+# according to data sheet this is expected: @0RMhhhmmss, @0EThhhmmss
+# no command identifies before these responses. since those are supposedly not send as
+# status messages, only as request, this can be compensated.
+
+- !CommandTemplate
+  name: Elapse Time
+  description: Elapse Time
+  request_composition: '@0?ET'
+  command_composition: null
+  answer_analysis: 'ack+([0-9]{3})([0-9]{2})([0-9]{2})'
+  argument_mappings:
+    hour: "int"
+    minute: "int"
+    second: "int"
+
+- !CommandTemplate
+  name: Remain Time
+  description: Remain Time
+  request_composition: '@0?RM'
+  command_composition: null
+  answer_analysis: 'ack+([0-9]{3})([0-9]{2})([0-9]{2})'
+  argument_mappings:
+    hour: "int"
+    minute: "int"
+    second: "int"
