@@ -22,10 +22,7 @@ class ThreadCommunication(ThreadCommunicationBase):
     error_seq = NotImplemented
 
     def __init__(self, target_ip, target_port, stop_event=None):
-        # target_ip, target_port are a typical config file variable
-        self.target_ip = target_ip
-        self.target_port = target_port
-        super().__init__(self.device_name, stop_event=stop_event)
+        super().__init__(target_ip, target_port, stop_event=stop_event)
         self.last_send_command_item = None
         self.last_send_data = None
         self.feedback_received = False

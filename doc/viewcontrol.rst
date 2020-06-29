@@ -135,7 +135,7 @@ Parents and Others
     :members:
     :show-inheritance:
 
-.. autoclass:: viewcontrol.show.AssosciationCommand
+.. autoclass:: viewcontrol.show.AssociationCommand
     :members:
     :show-inheritance:
 
@@ -164,3 +164,4 @@ Subpackages
 
     viewcontrol.playback
     viewcontrol.remotecontrol
+    viewcontrol.util

@@ -40,5 +40,6 @@ setuptools.setup(
         "SQLAlchemy==1.3.8",
         "blinker==1.4",
         "pynput==1.4.4",
+        "python-osc>=1.7.0",
     ],
 )

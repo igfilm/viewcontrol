@@ -152,10 +152,7 @@ class TestShowPlaylist:
 
     def test_1305_append_jumpto(self, show_t):
         assert show_t.count == 6
-        assert show_t.module_add_jumptotarget(
-            "skip loop",
-            "event_key_end",
-        )
+        assert show_t.module_add_jumptotarget("skip loop", "event_key_end",)
 
         assert show_t._module_get_at_pos(6).name == "#skip loop"
         assert show_t.count == 7
@@ -356,7 +353,5 @@ class TestShowPlaylist:
         }
         for name, connection in device.items():
             show_t.show_options.set_device_property(
-                show_t.show_options.devices.get(name),
-                enabled=True,
-                connection=connection,
+                show_t.show_options.devices[name], enabled=True, connection=connection,
             )

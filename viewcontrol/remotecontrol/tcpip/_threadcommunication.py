@@ -19,13 +19,11 @@ class ThreadCommunication(ThreadCommunicationBase):
     end_seq = NotImplemented
 
     def __init__(self, target_ip, target_port, buffer_size=1024, stop_event=None):
-        # target_ip, target_port are a typical config file variable
-        self.target_ip = target_ip
+        super().__init__(target_ip, target_port, stop_event=stop_event)
         self.target_port = target_port
         self.BUFFER_SIZE = buffer_size
         self.socket = None
         self.last_cmd = None
-        super().__init__(self.device_name, stop_event=stop_event)
 
     def _main(self):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as self.socket:

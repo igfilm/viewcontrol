@@ -32,11 +32,11 @@ Command Items
 
 For sending a ``CommandSendItem`` and receiving a ``CommandRecvItem`` are used which are passed over the Queue. The actual command properties are stored in ``CommandTemplate`` which are stored in the class attribute dict_command_template of each device. The device and command name are used to send the command to the appropriate device with the matching command.
 
-.. autoclass:: viewcontrol.remotecontrol.commanditembase.CommandSendItem
+.. autoclass:: viewcontrol.remotecontrol.commanditem.CommandSendItem
     :members:
     :show-inheritance:
 
-.. autoclass:: viewcontrol.remotecontrol.commanditembase.CommandRecvItem
+.. autoclass:: viewcontrol.remotecontrol.commanditem.CommandRecvItem
     :members:
     :show-inheritance:
 
@@ -94,10 +94,10 @@ Since only one Device per Protocol is supported at the moment, bigger changes in
     :show-inheritance:
 
 
-Package Process/Thread
-----------------------
+Process/Thread CommandProcess
+-----------------------------
 
-The package can be started as ``threading.Thread`` or ``multiprocessing.Process``. This is done by implementing two dummy (``ProcessCmd``, ``ThreadCmd``) classes which pass the arguments to the ``CommandProcess`` class and starts it in their run function. Since the communication is only done via Queues and Events which are similar at threading/queue and multiprocessing.
+The class can be started as ``threading.Thread`` or ``multiprocessing.Process``. This is done by implementing two dummy (``ProcessCmd``, ``ThreadCmd``) classes which pass the arguments to the ``CommandProcess`` class and starts it in their run function. Since the communication is only done via Queues and Events which are similar at threading/queue and multiprocessing.
 
 .. autoclass:: viewcontrol.remotecontrol.processcmd.ProcessCmd
     :members:

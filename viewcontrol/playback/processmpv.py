@@ -1,142 +1,214 @@
-import multiprocessing
-import pathlib
-import threading
-import functools
-import os
 import logging
 import logging.config
-import time
+import multiprocessing
+import os
+import pathlib
 import queue
+import threading
 
 import mpv
 
+from viewcontrol.util.timing import RenewableRepeatedTimer
+
 
 class ProcessMpv(multiprocessing.Process):
-    def __init__(self, logger_config, queue_send, queue_recv, fs_screen_num):
+    """Dummy to starting MpvProcess as thread. See MpvProcess for args."""
+
+    def __init__(
+        self, logger_config, queue_send, queue_recv, fs_screen_num, stop_event
+    ):
         super().__init__(name="ProcessMPV")
-        self._dummy = DummyMpv(
-            logger_config, queue_send, queue_recv, self.name, fs_screen_num
+        self._dummy = MpvProcess(
+            queue_send,
+            queue_recv,
+            self.name,
+            fs_screen_num,
+            stop_event,
+            logger_config=logger_config,
         )
 
     def run(self):
+        """Method to be run in sub-process; runs CommandProcess.run();"""
         self._dummy.run()
 
 
 class ThreadMpv(threading.Thread):
-    def __init__(self, logger, queue_send, queue_recv, fs_screen_num):
+    """Dummy to starting MpvProcess as thread. See MpvProcess for args."""
+
+    def __init__(self, queue_send, queue_recv, fs_screen_num, stop_event):
         super().__init__(name="ThreadMpv")
-        self._dummy = DummyMpv(logger, queue_send, queue_recv, self.name, fs_screen_num)
+        self._dummy = MpvProcess(
+            queue_send,
+            queue_recv,
+            self.name,
+            fs_screen_num,
+            stop_event,
+            logger_config=None,
+        )
 
     def run(self):
+        """Method representing the thread’s activity. Runs CommandProcess.run()"""
         self._dummy.run()
 
 
-class DummyMpv:
+class MpvProcess:
+    """Manages and starts threads of devices and handles communication.
+
+    Args:
+         queue_send (queue.Queue or multiprocessing.Queue): queue over which
+            status messages of player will are send.
+         queue_recv (queue.Queue or multiprocessing.Queue): queue over which
+            commands are passed to the process/player.
+         name_thread (str): name of thread ot process.
+         fs_screen_num (int): In multi-monitor configurations, this option tells mpv
+            which screen to display the video on.
+         stop_event (threading.Event or multiprocessing.Event): Event object which
+            will stop thread when set.
+         logger_config (dict or None): pass a queue logger logger config (only when
+            using multiprocessing). Default to None.
+
+    """
+
     def __init__(
-        self, logger_config, queue_send, queue_recv, parent_name, fs_screen_num
+        self,
+        queue_send,
+        queue_recv,
+        name_thread,
+        fs_screen_num,
+        stop_event,
+        logger_config=None,
     ):
+        self.stop_event = stop_event
         self.logger_config = logger_config
         self.queue_send = queue_send
         self.queue_recv = queue_recv
-        self.name = parent_name
+        self.name = name_thread
         self.fs_screen_num = fs_screen_num
 
         self.can_run = threading.Event()
         self.can_run.set()
+        self.next_image_display_time_queue = queue.Queue()
+
+        self.dummy_timer_running = False
+        self.duration_next = None
+        self.still_timer = None
+
+        self.logger = None
+        self.player = None
 
     def run(self):
-        if isinstance(self.logger_config, logging.Logger):
-            self.logger = self.logger_config
-        else:
+        """Run function for thread/process, to be called by dummies."""
+
+        # must be called in run
+        if self.logger_config:
             logging.config.dictConfig(self.logger_config)
-            self.logger = logging.getLogger()
+        self.logger = logging.getLogger()
         self.logger.info("Started '{}' with pid '{}'".format(self.name, os.getpid()))
 
         try:
-            # initilaize player
-            self.player = mpv.MPV(log_handler=self.mpv_log, ytdl=False)
+            # initialize player
+            self.player = mpv.MPV(log_handler=self._mpv_log, ytdl=False)
+            self.player["title"] = "viewcontrol"
             self.player["fullscreen"] = True
             self.player["fs-screen"] = self.fs_screen_num
             self.player["on-all-workspaces"] = True
             self.player["keep-open"] = False
             self.player["osc"] = False
+            self.player["image-display-duration"] = "INFINITY"
 
-            self.player.observe_property("filename", self.mpv_observer_stat)
-            self.player.observe_property("playlist-pos", self.mpv_observer_stat)
-            self.player.observe_property("time-pos", self.mpv_observer_stat)
-            self.player.observe_property("time-remaining", self.mpv_observer_stat)
+            self.player.observe_property("filename", self._mpv_observer_stat)
+            self.player.observe_property("playlist-pos", self._mpv_observer_stat)
+            self.player.observe_property("time-pos", self._mpv_observer_stat)
+            self.player.observe_property("time-remaining", self._mpv_observer_stat)
 
-            self.player_reset_playlist()
+            self._player_reset_playlist()
             self.dummy_timer_running = False
             start_image = True
+            self.duration_next = None
+            self.still_timer = None
 
-            self.next_image_display_time_queue = queue.Queue()
-
-            while True:
+            while not self.stop_event.is_set():
                 # wait for data in queue, add file to playlist when data is
-                # type str. Otherwse jump to next track (only used with still)
-                data = self.queue_recv.get()
-                self.logger.debug(
-                    "--> recived data: '{}':'{}'".format(type(data), str(data))
-                )
-
-                if isinstance(data, tuple):
-                    filepath, duration = data
-                    self.next_image_display_time_queue.put(duration)
-                    self.player.playlist_append(filepath)
-                    self.logger.info(
-                        "Appending File {} at pos {} in playlist.".format(
-                            str(data), len(self.player.playlist)
-                        )
+                # type str. Otherwise jump to next track (only used with still)
+                try:
+                    data = self.queue_recv.get(block=True, timeout=0.1)
+                    self.logger.debug(
+                        "--> received data: '{}':'{}'".format(type(data), str(data))
                     )
-                    if start_image:
-                        self.playlist_next()
-                        start_image = False
-                elif isinstance(data, str):
-                    if data == "pause":
-                        if self.playing:
-                            self.player_pause()
-                    elif data == "resume":
-                        if not self.playing:
-                            self.player_resume()
-                    elif data == "next":
-                        pass
-                        # self.playlist_next()
+
+                    if isinstance(data, tuple):
+                        filepath, duration = data
+                        self.player.playlist_append(filepath)
+                        self.duration_next = duration
+                        self.logger.info(
+                            "Appending File {} at pos {} in playlist.".format(
+                                str(data), len(self.player.playlist)
+                            )
+                        )
+                        if start_image:
+                            self._player_next()
+                            start_image = False
+                    elif isinstance(data, str):
+                        if data == "pause":
+                            if self._playing:
+                                self._player_pause()
+                        elif data == "resume":
+                            if not self._playing:
+                                self._player_resume()
+                        elif data == "next":
+                            self._player_next()
+
+                except queue.Empty:
+                    continue
+
+            self.player.terminate()
+
+            self.logger.info("stop flag set. terminated processmpv")
 
         except Exception as e:
             try:
                 raise
             finally:
                 self.logger.error(
-                    "Uncaught exception in process '{}'".format(self.name), exc_info=(e)
+                    "Uncaught exception in process '{}'".format(self.name), exc_info=e
                 )
 
     @property
-    def playing(self):
+    def _playing(self):
         if self.can_run.is_set():
             return True
         else:
             return False
 
-    def player_pause(self):
-        self.player["pause"] = True
+    def _player_pause(self):
+        if not self.still_timer:
+            self.player["pause"] = True
+        else:
+            self.still_timer.pause()
         self.can_run.clear()
 
-    def player_resume(self):
-        self.player["pause"] = False
+    def _player_resume(self):
+        if not self.still_timer:
+            self.player["pause"] = False
+        else:
+            self.still_timer.resume()
         self.can_run.set()
 
-    def playlist_next(self):
+    def _player_next(self):
+        if self.still_timer:
+            self.still_timer.cancel()
+            self.still_timer = None
         self.player.playlist_next()
 
-    def mpv_log(self, loglevel, component, message):
-        if loglevel == "fatal":
+    def _mpv_log(self, log_level, _, message):
+        """passes mpv log massages to python logger."""
+        if log_level == "fatal":
             level = 50
-        elif loglevel == "error":
+        elif log_level == "error":
             level = 40
-        elif loglevel == "warn":
+        elif log_level == "warn":
             level = 30
-        elif loglevel == "info":
+        elif log_level == "info":
             level = 20
         elif logging in ["v", "debug", "trace"]:
             level = 10
@@ -144,54 +216,45 @@ class DummyMpv:
             level = 0
         self.logger.log(level, "MPV:" + message)
 
-    def mpv_observer_stat(self, prop, value):
-        obj_send = (prop, value)
+    def _mpv_observer_stat(self, prop, value):
+        """relays status messages of interest to main thread (viewcontrol)"""
+        tuple_send = (prop, value)
         if prop == "time-pos" or prop == "time-remaining":
-            if not self.dummy_timer_running:
-                if value:
-                    value = round(value, 4)
-                self.queue_send.put((prop, value))
-            return
-        elif prop == "d_time-pos" or prop == "d_time-remaining":
-            if self.dummy_timer_running:
-                self.queue_send.put((prop[2:], round(value, 4)))
-            return
+            if value:
+                value = round(value, 4)
+            tuple_send = (prop, value)
         elif prop == "playlist-pos":
             if value == 0:
                 self.logger.debug(
-                    "<-- Ommiting {}. Property change not send.".format(obj_send)
+                    "<-- Omitting {}. Property change not send.".format(tuple_send)
                 )
                 return
-            elif value == None:
-                self.player_reset_playlist()
+            elif value is None:
+                self._player_reset_playlist()
             else:
-                t = self.next_image_display_time_queue.get()
-                if t:
-                    self.dummy_timer_running = True
-                    self.player["image-display-duration"] = t
-                    threading.Thread(target=self.thread_time_dummy, args=(t,)).start()
-                else:
-                    self.dummy_timer_running = False
-                    self.player["image-display-duration"] = "INFINITY"
+                if self.duration_next:
+                    self.still_timer = RenewableRepeatedTimer(
+                        0.1,
+                        self._timer_handler_repeat,
+                        cycles=int(self.duration_next / 0.1),
+                        handler_end=self._timer_handler_end,
+                    )
+                    self.still_timer.start()
 
-        self.queue_send.put(obj_send)
-        self.logger.debug(
-            "<-- send data: '{}':'{}'".format(type(obj_send), str(obj_send))
+        self.queue_send.put(tuple_send)
+        logging.getLogger().log(
+            0, "<-- send data: '{}':'{}'".format(type(tuple_send), str(tuple_send))
         )
 
-    def thread_time_dummy(self, duration, fps=10):
-        tr = duration
-        dt = 1 / fps
-        self.mpv_observer_stat("d_time-pos", 0)
-        self.mpv_observer_stat("d_time-remaining", duration)
-        while tr > 0.001:  #  WARNING time offset through process times
-            self.can_run.wait()
-            time.sleep(dt - 0.00029)
-            tr -= dt
-            self.mpv_observer_stat("d_time-pos", duration - tr)
-            self.mpv_observer_stat("d_time-remaining", tr)
+    def _timer_handler_repeat(self, runtime_cycle, time_left_cycle):
+        self._mpv_observer_stat("time-pos", runtime_cycle)
+        self._mpv_observer_stat("time-remaining", time_left_cycle)
 
-    def player_reset_playlist(self):
+    def _timer_handler_end(self, runtime_cycle, time_left_cycle):
+        self._timer_handler_repeat(runtime_cycle, time_left_cycle)
+        self._player_next()
+
+    def _player_reset_playlist(self):
         self.player.play(str(viewcontrol_picture_path()))
         self.player["image-display-duration"] = "INFINITY"
 

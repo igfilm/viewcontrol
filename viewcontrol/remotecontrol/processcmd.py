@@ -45,7 +45,12 @@ class ThreadCmd(threading.Thread):
     def __init__(self, queue_status, queue_command, modules, stop_event, **kwargs):
         super().__init__(name="ThreadCmd", **kwargs)
         self._dummy = CommandProcess(
-            queue_status, queue_command, modules, self.name, stop_event
+            queue_status,
+            queue_command,
+            modules,
+            self.name,
+            stop_event,
+            logger_config=None,
         )
 
     def run(self):
@@ -69,6 +74,7 @@ class CommandProcess:
             will stop thread when set.
          logger_config (dict or None): pass a queue logger logger config (only when
             using multiprocessing). Default to None.
+
     """
 
     def __init__(
@@ -94,7 +100,7 @@ class CommandProcess:
         self.timers = list()
 
         self.signal_sink = signal("sink_send")
-        self.signal_sink.connect(self.subscr_signal_sink)
+        self.signal_sink.connect(self._subscr_signal_sink)
 
         self.logger = None
 
@@ -113,9 +119,9 @@ class CommandProcess:
             ThreadCommunicationBase.set_answer_queue(self.queue_status)
 
             stop_event = threading.Event()
-            for name, device in self.devices.items():
+            for name, connection in self.devices.items():
                 thread_device = supported_devices.get(name)(
-                    stop_event=stop_event, *device.connection
+                    *connection, stop_event=stop_event
                 )
                 self.threads.append(thread_device)
                 s = signal("{}_send".format(thread_device.device_name))
@@ -145,10 +151,10 @@ class CommandProcess:
                     else:
                         # command item is a actual CommandItem
                         if command_item.delay == 0:
-                            self.send_to_thread(command_item)
+                            self._send_to_thread(command_item)
                         else:
                             t = timing.RenewableTimer(
-                                command_item.delay, self.send_to_thread, command_item
+                                command_item.delay, self._send_to_thread, command_item
                             )
                             t.start()
                             self.timers.append(t)
@@ -171,7 +177,7 @@ class CommandProcess:
                     else:
                         count += 1
 
-            self.logger.info("stop flag set. terminating processcmd")
+            self.logger.info("stop flag set. terminated processcmd")
 
         except Exception as e:
             try:
@@ -181,7 +187,7 @@ class CommandProcess:
                     "Uncaught exception in process '{}'".format(self.name), exc_info=e
                 )
 
-    def send_to_thread(self, command_item):
+    def _send_to_thread(self, command_item):
         """send command item to thread via a blinker signal
 
         Args:
@@ -196,7 +202,7 @@ class CommandProcess:
                 "Device {} not known".format(command_item.device.device_name)
             )
 
-    def subscr_signal_sink(self, command_item):
+    def _subscr_signal_sink(self, command_item):
         """subscriber for all signals for which device no thread was started.
 
         Its only job to print a warning in the log that device is not started.

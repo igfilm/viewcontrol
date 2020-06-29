@@ -82,6 +82,13 @@ class ShowOptions:
                 device_dict.update({device.name: device})
         return device_dict
 
+    @property
+    def enabled_devices_connections(self):
+        device_dict = dict()
+        for name, device in self.enabled_devices.items():
+            device_dict.update({name: device.connection})
+        return device_dict
+
     def _add_device(self, device_class):
         """add device to device dictionary
 

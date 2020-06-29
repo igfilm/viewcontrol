@@ -78,13 +78,15 @@ class ThreadCommunicationBase(threading.Thread, abc.ABC):
             cls.dict_command_template = CommandTemplateList(tmp_path)
             cls.dict_command_template.load_objects_from_yaml()
 
-    def __init__(self, name, stop_event=None, **kwargs):
+    def __init__(self, target_ip, target_port, stop_event=None, **kwargs):
         if not stop_event:
             stop_event = threading.Event()
             daemon = True
         else:
             daemon = False
-        super().__init__(daemon=daemon, name=name, **kwargs)
+        super().__init__(daemon=daemon, name=self.device_name, **kwargs)
+        self.target_ip = target_ip
+        self.target_port = target_port
         self.stop_event = stop_event
         self._queue_command = queue.Queue()
         self.logger = logging.getLogger(self.name)

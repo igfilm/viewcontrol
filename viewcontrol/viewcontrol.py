@@ -184,16 +184,17 @@ class ViewControl(object):
             self.process_cmd = ProcessCmd(
                 self.cmd_status_queue,
                 self.cmd_control_queue,
-                self.playlist.show_options.enabled_devices,
+                self.playlist.show_options.enabled_devices_connections,
                 self.stop_event,
                 self.config_queue_logger,
             )
 
             self.process_mpv = ProcessMpv(
-                self.config_queue_logger,
                 self.mpv_status_queue,
                 self.mpv_control_queue,
                 self.argpars_result.screen,
+                self.stop_event,
+                self.config_queue_logger,
             )
         else:
 
@@ -202,16 +203,15 @@ class ViewControl(object):
             self.process_cmd = ThreadCmd(
                 self.cmd_status_queue,
                 self.cmd_control_queue,
-                self.playlist.show_options.enabled_devices,
+                self.playlist.show_options.enabled_devices_connections,
                 self.stop_event,
-
             )
 
             self.process_mpv = ThreadMpv(
-                self.logger,
                 self.mpv_status_queue,
                 self.mpv_control_queue,
                 self.argpars_result.screen,
+                self.stop_event,
             )
 
         self.processes = []
@@ -238,28 +238,28 @@ class ViewControl(object):
             listener.start()
 
     def main(self):
-        """
-        entry point of program
+        """entry point of program, starts all in init initialized processes"""
+        try:
+            for process in self.processes:
+                process.start()
 
-        starts all in init initialized processes
-        """
+            time.sleep(1)
 
-        for process in self.processes:
-            process.start()
-
-        time.sleep(1)
-
-        self.player_append_current_from_playlist()
-        for c in self.playlist.module_current.list_commands:
-            self.sig_cmd_command.send(c)
-
-        while True:
-            self.event_append.wait()  # not blocking with if .is_set()
-            self.player_append_next_from_playlist()
-            self.event_append.clear()
-            self.event_next_happened.wait()
+            self.player_append_current_from_playlist()
             for c in self.playlist.module_current.list_commands:
                 self.sig_cmd_command.send(c)
+
+            while True:
+                self.event_append.wait()  # not blocking with if .is_set()
+                self.player_append_next_from_playlist()
+                self.event_append.clear()
+                self.event_next_happened.wait()
+                for c in self.playlist.module_current.list_commands:
+                    self.sig_cmd_command.send(c)
+
+        except KeyboardInterrupt:
+            self.logger.info("KeyboardInterrupt! Stopping Program!")
+            self.stop_event.set()
 
     def send_command(self, command_obj):
         """send command object to process/thread: process_cmd
@@ -280,6 +280,7 @@ class ViewControl(object):
 
         """
         if not self.playing.is_set():
+            self.logger.info("resuming playback")
             self.playing.set()
             self.mpv_control_queue.put("resume")
             self.cmd_control_queue.put("resume")
@@ -292,6 +293,7 @@ class ViewControl(object):
 
         """
         if self.playing.is_set():
+            self.logger.info("pausing playback")
             self.playing.clear()
             self.mpv_control_queue.put("pause")
             self.cmd_control_queue.put("pause")
@@ -306,6 +308,14 @@ class ViewControl(object):
             self.player_pause()
         else:
             self.player_resume()
+
+    def player_next(self):
+        """jump to next media element in playlist (command timers not affected!)"""
+        self.logger.info("playing next media")
+        self.subscr_time(0)
+        while self.event_append.is_set():
+            pass
+        self.mpv_control_queue.put("next")
 
     def player_append_next_from_playlist(self):
         """Append next playlist element to player
@@ -352,7 +362,11 @@ class ViewControl(object):
         allows you to add the next element.
 
         """
-        if self.event_next_happened.is_set() and remaining_time and remaining_time < 1:
+        if (
+            self.event_next_happened.is_set()
+            and remaining_time is not None
+            and remaining_time < 1
+        ):
             self.event_next_happened.clear()
             self.event_append.set()
 
@@ -449,6 +463,8 @@ class ViewControl(object):
                 self.player_pause()
             elif key == keyboard.Key.page_up:
                 self.player_resume()
+            elif key == keyboard.Key.home:
+                self.player_next()
 
             self.event_queue.put(("KeyEvent", key, "on_press"))
 
