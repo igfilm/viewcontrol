@@ -8,7 +8,7 @@ import threading
 
 import mpv
 
-from viewcontrol.util.timing import RenewableRepeatedTimer
+from viewcontrol.util.timing import PausableRepeatedTimer
 
 
 class ProcessMpv(multiprocessing.Process):
@@ -85,8 +85,8 @@ class MpvProcess:
         self.name = name_thread
         self.fs_screen_num = fs_screen_num
 
-        self.can_run = threading.Event()
-        self.can_run.set()
+        self._is_not_paused = threading.Event()
+        self._is_not_paused.set()
         self.next_image_display_time_queue = queue.Queue()
 
         self.dummy_timer_running = False
@@ -175,24 +175,28 @@ class MpvProcess:
 
     @property
     def _playing(self):
-        if self.can_run.is_set():
+        if self._is_not_paused.is_set():
             return True
         else:
             return False
 
+    @property
+    def is_paused(self):
+        if not self._is_not_paused.is_set():
+            return True
+        return False
+
     def _player_pause(self):
-        if not self.still_timer:
-            self.player["pause"] = True
-        else:
+        self.player["pause"] = True
+        if self.still_timer:
             self.still_timer.pause()
-        self.can_run.clear()
+        self._is_not_paused.clear()
 
     def _player_resume(self):
-        if not self.still_timer:
-            self.player["pause"] = False
-        else:
+        self.player["pause"] = False
+        if self.still_timer:
             self.still_timer.resume()
-        self.can_run.set()
+        self._is_not_paused.set()
 
     def _player_next(self):
         if self.still_timer:
@@ -233,13 +237,15 @@ class MpvProcess:
                 self._player_reset_playlist()
             else:
                 if self.duration_next:
-                    self.still_timer = RenewableRepeatedTimer(
+                    self.still_timer = PausableRepeatedTimer(
                         0.1,
                         self._timer_handler_repeat,
                         cycles=int(self.duration_next / 0.1),
                         handler_end=self._timer_handler_end,
                     )
                     self.still_timer.start()
+                    if not self._is_not_paused.is_set():
+                        self.still_timer.pause()
 
         self.queue_send.put(tuple_send)
         logging.getLogger().log(

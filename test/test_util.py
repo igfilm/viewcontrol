@@ -1,6 +1,9 @@
 import collections
+import time
 
-from viewcontrol.util.timing import RenewableRepeatedTimer
+from viewcontrol.util.timing import PausableRepeatedTimer
+from viewcontrol.util.timing import RepeatedTimer
+from viewcontrol.util.timing import PausableTimer
 
 callback_stack = list()
 
@@ -32,7 +35,7 @@ def _print_cycles(
 def test_timer_argument_passing():
     global callback_stack
     callback_stack = list()
-    timer = RenewableRepeatedTimer(
+    timer = PausableRepeatedTimer(
         0.5, _print_cycles, "custom_arg", cycles=3, custom_kwarg2="custom_kwarg2"
     )
     timer.start()
@@ -44,3 +47,51 @@ def test_timer_argument_passing():
     assert args.custom_kwarg1 == "default_kwarg1"
     assert args.custom_kwarg2 == "custom_kwarg2"
     assert args.runtime_thread >= 0
+
+
+def test_timer_time_rest():
+    timer = RepeatedTimer(0.2, RepeatedTimer.do_nothing, duration=3.14)
+    t_start = time.perf_counter()
+    timer.start()
+    timer.join()
+    t_stop = time.perf_counter()
+    runtime = t_stop - t_start
+    print(runtime)
+    assert runtime < 3.141
+    assert runtime > 3.139
+
+
+def test_timer_pause():
+    timer = PausableRepeatedTimer(0.2, RepeatedTimer.do_nothing, cycles=10)
+    t_start = time.perf_counter()
+    timer.start()
+    time.sleep(1)
+    timer.pause()
+    t_pause = time.perf_counter()
+    while time.perf_counter() - t_pause < 1:
+        pass
+    timer.resume()
+    timer.join()
+    t_stop = time.perf_counter()
+    runtime = t_stop - t_start
+    print(runtime)
+    assert runtime < 3.001
+    assert runtime > 2.999
+
+
+def test_timer_renewable_only():
+    timer = PausableTimer(1.998, RepeatedTimer.do_nothing)
+    t_start = time.perf_counter()
+    timer.start()
+    time.sleep(1)
+    timer.pause()
+    t_pause = time.perf_counter()
+    while time.perf_counter() - t_pause < 1:
+        pass
+    timer.resume()
+    timer.join()
+    t_stop = time.perf_counter()
+    runtime = t_stop - t_start
+    print(runtime)
+    assert runtime < 3.000
+    assert runtime > 2.996

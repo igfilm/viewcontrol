@@ -153,7 +153,7 @@ class CommandProcess:
                         if command_item.delay == 0:
                             self._send_to_thread(command_item)
                         else:
-                            t = timing.RenewableTimer(
+                            t = timing.PausableTimer(
                                 command_item.delay, self._send_to_thread, command_item
                             )
                             t.start()
