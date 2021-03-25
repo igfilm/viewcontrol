@@ -33,7 +33,7 @@ setuptools.setup(
     ],
     python_requires=">=3.6",
     install_requires=[
-        "PyYAML==5.1.2",
+        "PyYAML==5.4",
         "python-mpv==0.3.9",
         "moviepy>=1.0.0, !=1.0.1",
         "Wand==0.5.7",
